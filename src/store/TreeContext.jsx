@@ -1,32 +1,37 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+
+// Use env variable — falls back to localhost for local dev
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const TreeContext = createContext();
 
 export const useTreeInfo = () => useContext(TreeContext);
-
-// Initial empty state
-const initialState = {
-  nodes: [], // { id, firstName, lastName, birthDate, deathDate, bio, avatar, gender, x, y }
-  edges: [], // { id, sourceId, targetId, type: 'parent-child' | 'partner' }
-};
 
 export const TreeProvider = ({ children }) => {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  // Shared canvas scale so PersonNode can correct drag delta at zoom != 1
+  const [canvasScale, setCanvasScale] = useState(1);
 
-  // Load from REST API
+  const saveTimerRef = useRef(null);
+  // Tracks how many effect invocations to skip (used to prevent re-saving data just loaded from server)
+  const saveSkipCountRef = useRef(0);
+
+  // Load from REST API on mount
   useEffect(() => {
-    fetch('http://localhost:3001/api/tree')
+    fetch(`${API_URL}/api/tree`)
       .then(res => res.json())
       .then(data => {
         if (data.nodes && data.nodes.length > 0) {
+          // Skip saving the very next effect run — we just loaded this data, no need to POST it back
+          saveSkipCountRef.current = 1;
           setNodes(data.nodes);
           setEdges(data.edges || []);
         } else {
-          // Create first node if empty
+          // Empty DB — create a root node and let it save normally
           const rootId = uuidv4();
           const rootNode = {
             id: rootId,
@@ -46,18 +51,31 @@ export const TreeProvider = ({ children }) => {
           setIsPanelOpen(true);
         }
       })
-      .catch(e => console.error("Failed to fetch tree data", e));
+      .catch(e => console.error('Failed to fetch tree data', e));
   }, []);
 
-  // Save to REST API on change (debounce could be added, but works for now)
+  // Debounced auto-save — 500ms after last change, batch all edits into a single request
   useEffect(() => {
-    if (nodes.length > 0) {
-      fetch('http://localhost:3001/api/tree', {
+    if (nodes.length === 0) return;
+
+    if (saveSkipCountRef.current > 0) {
+      saveSkipCountRef.current -= 1;
+      return;
+    }
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+
+    saveTimerRef.current = setTimeout(() => {
+      fetch(`${API_URL}/api/tree`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nodes, edges })
-      }).catch(e => console.error("Failed to save tree data", e));
-    }
+        body: JSON.stringify({ nodes, edges }),
+      }).catch(e => console.error('Failed to save tree data', e));
+    }, 500);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
   }, [nodes, edges]);
 
   const addNode = (nodeData) => {
@@ -80,7 +98,6 @@ export const TreeProvider = ({ children }) => {
   };
 
   const addEdge = (sourceId, targetId, type) => {
-    // avoid duplicates
     const exists = edges.some(
       (e) =>
         (e.sourceId === sourceId && e.targetId === targetId && e.type === type) ||
@@ -102,15 +119,17 @@ export const TreeProvider = ({ children }) => {
         edges,
         selectedNodeId,
         isPanelOpen,
+        canvasScale,
         setSelectedNodeId,
         setIsPanelOpen,
+        setCanvasScale,
         addNode,
         updateNode,
         removeNode,
         addEdge,
         removeEdge,
         setNodes,
-        setEdges
+        setEdges,
       }}
     >
       {children}
