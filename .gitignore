@@ -17,6 +17,17 @@ dist-ssr
 .env.local
 !.env.example
 
+# Local Database
+db.json
+db.json.tmp
+!.db.json.example
+
+# Test reports & artifacts
+playwright-report/
+test-results/
+vitest-out.json
+blob-report/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

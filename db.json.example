@@ -1,0 +1,104 @@
+{
+  "nodes": [
+    {
+      "id": "root-jan",
+      "firstName": "Jan",
+      "lastName": "Kowalski",
+      "birthDate": "1950-05-12",
+      "deathDate": "",
+      "bio": "Nestor rodu Kowalskich. Założyciel firmy rodzinnej.",
+      "gender": "male",
+      "avatar": "",
+      "x": 500,
+      "y": 100
+    },
+    {
+      "id": "root-maria",
+      "firstName": "Maria",
+      "lastName": "Kowalska",
+      "maidenName": "Nowak",
+      "birthDate": "1952-08-20",
+      "deathDate": "",
+      "bio": "Emerytowana nauczycielka, pasjonatka ogrodnictwa.",
+      "gender": "female",
+      "avatar": "",
+      "x": 800,
+      "y": 100
+    },
+    {
+      "id": "child-adam",
+      "firstName": "Adam",
+      "lastName": "Kowalski",
+      "birthDate": "1975-03-15",
+      "deathDate": "",
+      "bio": "Starszy syn Jana i Marii. Inżynier.",
+      "gender": "male",
+      "avatar": "",
+      "x": 300,
+      "y": 350
+    },
+    {
+      "id": "child-anna",
+      "firstName": "Anna",
+      "lastName": "Zielińska",
+      "maidenName": "Kowalska",
+      "birthDate": "1980-11-02",
+      "deathDate": "",
+      "bio": "Córka Jana i Marii. Lekarka.",
+      "gender": "female",
+      "avatar": "",
+      "x": 1000,
+      "y": 350
+    },
+    {
+      "id": "grandchild-piotr",
+      "firstName": "Piotr",
+      "lastName": "Kowalski",
+      "birthDate": "2005-06-10",
+      "deathDate": "",
+      "bio": "Syn Adama. Student informatyki.",
+      "gender": "male",
+      "avatar": "",
+      "x": 300,
+      "y": 600
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-jan-maria",
+      "sourceId": "root-jan",
+      "targetId": "root-maria",
+      "type": "partner"
+    },
+    {
+      "id": "edge-jan-adam",
+      "sourceId": "root-jan",
+      "targetId": "child-adam",
+      "type": "parent-child"
+    },
+    {
+      "id": "edge-maria-adam",
+      "sourceId": "root-maria",
+      "targetId": "child-adam",
+      "type": "parent-child"
+    },
+    {
+      "id": "edge-jan-anna",
+      "sourceId": "root-jan",
+      "targetId": "child-anna",
+      "type": "parent-child"
+    },
+    {
+      "id": "edge-maria-anna",
+      "sourceId": "root-maria",
+      "targetId": "child-anna",
+      "type": "parent-child"
+    },
+    {
+      "id": "edge-adam-piotr",
+      "sourceId": "child-adam",
+      "targetId": "grandchild-piotr",
+      "type": "parent-child"
+    }
+  ]
+}
