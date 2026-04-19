@@ -8,7 +8,10 @@ vi.spyOn(TreeContextModule, 'useTreeInfo').mockReturnValue({
   nodes: {},
   edges: {},
   setNodes: vi.fn(),
-  setEdges: vi.fn()
+  setEdges: vi.fn(),
+  setSelectedNodeId: vi.fn(),
+  setIsPanelOpen: vi.fn(),
+  setFocusNodeId: vi.fn()
 });
 
 describe('Header Component', () => {

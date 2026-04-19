@@ -14,6 +14,7 @@ export const TreeProvider = ({ children }) => {
   const [edges, setEdges] = useState({});
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [focusNodeId, setFocusNodeId] = useState(null);
   // Temporary drag positions — updated every mousemove without touching global `nodes`
   const [dragPositions, setDragPositions] = useState({});
   // Shared canvas scale so PersonNode can correct drag delta at zoom != 1
@@ -176,11 +177,13 @@ export const TreeProvider = ({ children }) => {
         isPanelOpen,
         canvasScale,
         dragPositions,
+        focusNodeId,
         setSelectedNodeId,
         setIsPanelOpen,
         setCanvasScale,
         setDragPosition,
         clearDragPosition,
+        setFocusNodeId,
         addNode,
         updateNode,
         removeNode,

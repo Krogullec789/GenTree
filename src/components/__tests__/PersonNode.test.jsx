@@ -26,6 +26,6 @@ describe('PersonNode Component', () => {
     render(<PersonNode node={nodeData} />);
     
     expect(screen.getByText('Jan Kowalski')).toBeInTheDocument();
-    expect(screen.getByText('1980 – ?')).toBeInTheDocument();
+    expect(screen.getByText('1980')).toBeInTheDocument();
   });
 });

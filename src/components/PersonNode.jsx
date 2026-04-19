@@ -86,6 +86,9 @@ const PersonNode = ({ node }) => {
     >
       <div
         onMouseDown={handleDragStart}
+        role="button"
+        aria-label="Przesuń osobę"
+        tabIndex={0}
         style={{
           position: 'absolute',
           top: '-10px',
@@ -125,7 +128,7 @@ const PersonNode = ({ node }) => {
           {node.firstName} {node.lastName} {node.maidenName ? `(z d. ${node.maidenName})` : ''}
         </h3>
         <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-          {formatYear(node.birthDate)} – {formatYear(node.deathDate)}
+          {node.birthDate ? formatYear(node.birthDate) : '?'}{node.deathDate ? ` – ${formatYear(node.deathDate)}` : ''}
         </p>
       </div>
     </div>
