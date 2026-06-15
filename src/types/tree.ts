@@ -35,7 +35,18 @@ export interface TreeData {
   edges: EdgeMap;
 }
 
+export interface TreeDocument extends TreeData {
+  version: string;
+}
+
+export type SaveStatus = 'idle' | 'loading' | 'saving' | 'saved' | 'error' | 'conflict';
+
 export interface TreeContextValue extends TreeData {
+  version: string | null;
+  saveStatus: SaveStatus;
+  lastError: string | null;
+  canUndo: boolean;
+  canRedo: boolean;
   selectedNodeId: string | null;
   isPanelOpen: boolean;
   canvasScale: number;
@@ -50,8 +61,12 @@ export interface TreeContextValue extends TreeData {
   addNode: (nodeData: NewPersonNode) => string;
   updateNode: (id: string, updates: Partial<PersonNode>) => void;
   removeNode: (id: string) => void;
-  addEdge: (sourceId: string, targetId: string, type: RelationshipType) => void;
+  addEdge: (sourceId: string, targetId: string, type: RelationshipType) => boolean;
   removeEdge: (id: string) => void;
+  undo: () => void;
+  redo: () => void;
+  applyAutoLayout: () => void;
   setNodes: React.Dispatch<React.SetStateAction<NodeMap>>;
   setEdges: React.Dispatch<React.SetStateAction<EdgeMap>>;
+  replaceTree: (data: TreeData, nextVersion?: string | null) => void;
 }

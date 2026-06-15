@@ -49,8 +49,13 @@ GenTree is a personal project for creating and exploring family trees. I built i
 ```bash
 npm run test          # unit and integration tests
 npm run test:e2e      # end-to-end tests with Playwright
+npm run verify:quick  # lint + typecheck + unit/integration tests
+npm run verify:app    # validates db.json, starts the app, and smoke-tests the real UI
+npm run verify:full   # full portfolio-grade verification pipeline
 npx playwright show-report
 ```
+
+`verify:app` is the fastest way to check the real local application state. It starts the Vite frontend and Express backend, validates `db.json`, opens Chromium with Playwright, confirms the family tree renders, opens a profile panel, and then shuts everything down automatically.
 
 ---
 

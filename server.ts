@@ -1,10 +1,9 @@
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { normalizeTreeData } from './src/utils/treeData';
-import type { TreeData } from './src/types/tree';
+import { validateTreeData } from './src/utils/treeData';
+import { TreeRepository } from './src/server/treeRepository';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +12,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const DB_FILE = process.env.TEST_DB || path.join(__dirname, 'db.json');
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173';
-let writeQueue: Promise<void> = Promise.resolve();
+const API_TOKEN = process.env.TREE_API_TOKEN || process.env.API_TOKEN || '';
+const ALLOW_UNAUTHENTICATED_API =
+  process.env.ALLOW_UNAUTHENTICATED_API === 'true' || process.env.NODE_ENV === 'test';
+const repository = new TreeRepository(DB_FILE);
 
 // Restrict CORS to known origin
 app.use(cors({ origin: ALLOWED_ORIGIN }));
@@ -21,53 +23,62 @@ app.use(cors({ origin: ALLOWED_ORIGIN }));
 // Limit payload size to 2MB to prevent abuse
 app.use(express.json({ limit: '2mb' }));
 
-// Initialize db.json if it doesn't exist
-if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ nodes: {}, edges: {} }, null, 2));
-}
+await repository.ensureInitialized();
+
+const stripWeakQuotes = (value: string) => value.replace(/^W\//, '').replace(/^"|"$/g, '');
+
+app.use('/api', (req, res, next) => {
+  if (!API_TOKEN && !ALLOW_UNAUTHENTICATED_API) {
+    return res.status(503).json({ error: 'API token is required' });
+  }
+
+  if (!API_TOKEN) return next();
+
+  const bearer = req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+  const headerToken = req.header('X-API-Token');
+
+  if (bearer === API_TOKEN || headerToken === API_TOKEN) return next();
+
+  return res.status(401).json({ error: 'Unauthorized' });
+});
 
 app.get('/api/tree', async (req, res) => {
   try {
-    const data = await fs.promises.readFile(DB_FILE, 'utf8');
-    res.json(JSON.parse(data));
+    const data = await repository.read();
+    res.setHeader('ETag', `"${data.version}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(data);
   } catch (error) {
-    const readError = error as NodeJS.ErrnoException;
-    if (readError.code === 'ENOENT') {
-      res.json({ nodes: {}, edges: {} });
-    } else {
-      console.error(error);
-      res.status(500).json({ error: 'Failed to read data' });
-    }
+    console.error(error);
+    res.status(500).json({ error: 'Failed to read valid tree data' });
   }
 });
 
-const writeTreeData = async (data: TreeData): Promise<void> => {
-  const tmpFile = `${DB_FILE}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
-  await fs.promises.writeFile(tmpFile, JSON.stringify(data, null, 2));
-  await fs.promises.rename(tmpFile, DB_FILE);
-};
-
-const queueTreeWrite = (data: TreeData): Promise<void> => {
-  writeQueue = writeQueue
-    .catch(() => {})
-    .then(() => writeTreeData(data));
-
-  return writeQueue;
-};
-
 app.post('/api/tree', async (req, res) => {
   try {
-    const data = normalizeTreeData(req.body);
+    const expectedVersionHeader = req.header('If-Match');
 
-    if (!data) {
-      return res.status(400).json({ error: 'Invalid data structure' });
+    if (!expectedVersionHeader) {
+      const current = await repository.read();
+      return res.status(428).json({ error: 'If-Match header is required', version: current.version });
     }
 
-    // Atomic write: write to temp file, then rename to avoid corruption on crash
-    await queueTreeWrite(data);
+    const validation = validateTreeData(req.body);
 
-    res.json({ success: true });
+    if (!validation.valid) {
+      return res.status(400).json({ error: 'Invalid data structure', details: validation.errors });
+    }
+
+    const saved = await repository.save(validation.data, stripWeakQuotes(expectedVersionHeader));
+
+    res.setHeader('ETag', `"${saved.version}"`);
+    res.json({ success: true, version: saved.version });
   } catch (error) {
+    const saveError = error as Error & { statusCode?: number; version?: string };
+    if (saveError.statusCode === 409) {
+      return res.status(409).json({ error: 'Version conflict', version: saveError.version });
+    }
+
     console.error(error);
     res.status(500).json({ error: 'Failed to save data' });
   }

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
@@ -27,7 +27,7 @@ test.describe('GenTree E2E Tests', () => {
     await expect(page.getByText('Jan Kowalski')).toBeVisible({ timeout: 10000 });
     await page.getByText('Jan Kowalski').click();
 
-    await expect(page.getByRole('heading', { name: 'Profil Osoby' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Profil osoby' })).toBeVisible();
     await expect(page.getByLabel('Imię')).toHaveValue('Jan');
   });
 });

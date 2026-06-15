@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useTreeInfo } from '../store/TreeContext';
 import PersonNode from './PersonNode';
 import { NODE_WIDTH, NODE_HEIGHT } from '../constants/layout';
@@ -7,6 +7,7 @@ const Canvas = () => {
   const { nodes, edges, dragPositions, focusNodeId, setFocusNodeId, setSelectedNodeId, setIsPanelOpen, setCanvasScale } = useTreeInfo();
 
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -15,6 +16,21 @@ const Canvas = () => {
   useEffect(() => {
     setCanvasScale(transform.scale);
   }, [transform.scale, setCanvasScale]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const updateViewport = () => {
+      const rect = canvas.getBoundingClientRect();
+      setViewport({ width: rect.width, height: rect.height });
+    };
+    updateViewport();
+
+    const resizeObserver = new ResizeObserver(updateViewport);
+    resizeObserver.observe(canvas);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   // Center canvas on a node when focusNodeId changes
   useEffect(() => {
@@ -28,15 +44,16 @@ const Canvas = () => {
     setFocusNodeId(null);
   }, [focusNodeId, nodes, setFocusNodeId, transform.scale]);
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('.person-node')) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
     setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
     setSelectedNodeId(null);
     setIsPanelOpen(false);
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging) return;
     setTransform(prev => ({
       ...prev,
@@ -45,7 +62,12 @@ const Canvas = () => {
     }));
   };
 
-  const handleMouseUp = () => setIsDragging(false);
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    setIsDragging(false);
+  };
 
   // Zoom correctly towards the mouse cursor position
   // Using useCallback with no deps so the event listener is registered only once.
@@ -53,6 +75,7 @@ const Canvas = () => {
   const handleWheel = useCallback((e: WheelEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    e.preventDefault();
 
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -75,15 +98,37 @@ const Canvas = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
-      canvas.addEventListener('wheel', handleWheel, { passive: true });
+      canvas.addEventListener('wheel', handleWheel, { passive: false });
     }
     return () => {
       if (canvas) canvas.removeEventListener('wheel', handleWheel);
     };
   }, [handleWheel]);
 
+  const visibleNodes = useMemo(() => {
+    const allNodes = Object.values(nodes);
+    if (viewport.width === 0 || viewport.height === 0) return allNodes;
+
+    const margin = 500;
+    const minX = (-transform.x / transform.scale) - margin;
+    const minY = (-transform.y / transform.scale) - margin;
+    const maxX = ((viewport.width - transform.x) / transform.scale) + margin;
+    const maxY = ((viewport.height - transform.y) / transform.scale) + margin;
+
+    return allNodes.filter(node =>
+      node.x + NODE_WIDTH >= minX &&
+      node.x <= maxX &&
+      node.y + NODE_HEIGHT >= minY &&
+      node.y <= maxY,
+    );
+  }, [nodes, transform, viewport]);
+
+  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map(node => node.id)), [visibleNodes]);
+
   const renderEdges = () => {
     return Object.values(edges).map((edge) => {
+      if (!visibleNodeIds.has(edge.sourceId) && !visibleNodeIds.has(edge.targetId)) return null;
+
       const sourceNode = nodes[edge.sourceId];
       const targetNode = nodes[edge.targetId];
 
@@ -146,11 +191,12 @@ const Canvas = () => {
         cursor: isDragging ? 'grabbing' : 'grab',
         overflow: 'hidden',
         background: 'transparent',
+        touchAction: 'none',
       }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       <div style={{
         transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
@@ -178,7 +224,7 @@ const Canvas = () => {
         </svg>
 
         {/* HTML layer for nodes */}
-        {Object.values(nodes).map(node => (
+        {visibleNodes.map(node => (
           <PersonNode key={node.id} node={node} />
         ))}
       </div>

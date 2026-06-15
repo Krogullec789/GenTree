@@ -12,7 +12,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "node ./scripts/run-e2e.mjs",
+    "verify:quick": "npm run lint && npm run typecheck && npm test",
+    "verify:app": "node --import tsx ./scripts/verify-local-app.mjs",
+    "verify:full": "npm run verify:quick && npm run build && npm run test:e2e && npm run verify:app"
   },
   "dependencies": {
     "cors": "^2.8.6",
@@ -34,7 +37,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/supertest": "^7.2.0",
     "@vitejs/plugin-react": "^6.0.1",
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.3",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",

@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PersonNode from '../PersonNode';
 import * as TreeContextModule from '../../store/TreeContext';
 import type { PersonNode as PersonNodeType, TreeContextValue } from '../../types/tree';
@@ -9,6 +9,11 @@ import type { PersonNode as PersonNodeType, TreeContextValue } from '../../types
 const mockTreeContext: TreeContextValue = {
   nodes: {},
   edges: {},
+  version: 'v1',
+  saveStatus: 'saved',
+  lastError: null,
+  canUndo: false,
+  canRedo: false,
   selectedNodeId: null,
   isPanelOpen: false,
   dragPositions: {},
@@ -22,11 +27,15 @@ const mockTreeContext: TreeContextValue = {
   removeNode: vi.fn(),
   addEdge: vi.fn(),
   removeEdge: vi.fn(),
+  undo: vi.fn(),
+  redo: vi.fn(),
+  applyAutoLayout: vi.fn(),
   setNodes: vi.fn(),
   setEdges: vi.fn(),
+  replaceTree: vi.fn(),
   canvasScale: 1,
   setDragPosition: vi.fn(),
-  clearDragPosition: vi.fn()
+  clearDragPosition: vi.fn(),
 };
 
 vi.spyOn(TreeContextModule, 'useTreeInfo').mockReturnValue(mockTreeContext);
@@ -36,7 +45,7 @@ beforeEach(() => {
 });
 
 describe('PersonNode Component', () => {
-  it('renders student data correctly', () => {
+  it('renders person data correctly', () => {
     const nodeData: PersonNodeType = {
       id: '1',
       firstName: 'Jan',
@@ -44,13 +53,14 @@ describe('PersonNode Component', () => {
       birthDate: '1980-01-01',
       gender: 'male',
       x: 100,
-      y: 100
+      y: 100,
     };
 
     render(<PersonNode node={nodeData} />);
-    
+
     expect(screen.getByText('Jan Kowalski')).toBeInTheDocument();
     expect(screen.getByText('1980')).toBeInTheDocument();
+    expect(screen.getByLabelText('Otwórz profil: Jan Kowalski')).toBeInTheDocument();
   });
 
   it('moves the node with keyboard arrows when the drag handle is focused', async () => {
@@ -62,7 +72,7 @@ describe('PersonNode Component', () => {
       birthDate: '1980-01-01',
       gender: 'male',
       x: 100,
-      y: 100
+      y: 100,
     };
 
     render(<PersonNode node={nodeData} />);
