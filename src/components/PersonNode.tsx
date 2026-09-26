@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { GripHorizontal, User } from 'lucide-react';
-import { NODE_WIDTH } from '../constants/layout';
+import { NODE_WIDTH, NODE_HEIGHT } from '../constants/layout';
+import { useCanvasScale, useDragActions } from '../store/DragContext';
 import { useTreeInfo } from '../store/TreeContext';
 import type { NodePosition, PersonNode as PersonNodeType } from '../types/tree';
 
@@ -14,10 +15,10 @@ const PersonNode = ({ node }: PersonNodeProps) => {
     setSelectedNodeId,
     setIsPanelOpen,
     updateNode,
-    canvasScale,
-    setDragPosition,
-    clearDragPosition,
   } = useTreeInfo();
+  const { canvasScale } = useCanvasScale();
+  const { setDragPosition, clearDragPosition } = useDragActions();
+  const dragRef = useRef<{ pointerId: number; x: number; y: number; initial: NodePosition } | null>(null);
   const isSelected = selectedNodeId === node.id;
 
   const [isDraggingNode, setIsDraggingNode] = useState(false);
@@ -38,51 +39,41 @@ const PersonNode = ({ node }: PersonNodeProps) => {
     setIsPanelOpen(true);
   };
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    if (!isDraggingNode) openProfile();
-  };
-
-  const handleNodeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    e.preventDefault();
-    e.stopPropagation();
-    openProfile();
-  };
-
-  const handleDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleDragStart = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0 || dragRef.current) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
+    const initial = { x: node.x, y: node.y };
+    localPosRef.current = initial;
+    setLocalPos(initial);
+    dragRef.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, initial };
     setIsDraggingNode(true);
-
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const initialX = node.x;
-    const initialY = node.y;
-    const scale = canvasScale;
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const dx = (moveEvent.clientX - startX) / scale;
-      const dy = (moveEvent.clientY - startY) / scale;
-      const newPos = { x: initialX + dx, y: initialY + dy };
-      setLocalPos(newPos);
-      localPosRef.current = newPos;
-      setDragPosition(node.id, newPos);
-    };
-
-    const handlePointerUp = () => {
-      updateNode(node.id, localPosRef.current);
-      clearDragPosition(node.id);
-      setTimeout(() => setIsDraggingNode(false), 50);
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
-    };
-
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
   };
 
-  const handleKeyboardMove = (e: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleDragMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    e.stopPropagation();
+    const position = { x: drag.initial.x + (e.clientX - drag.x) / canvasScale, y: drag.initial.y + (e.clientY - drag.y) / canvasScale };
+    localPosRef.current = position;
+    setLocalPos(position);
+    setDragPosition(node.id, position);
+  };
+
+  const finishDrag = (e: React.PointerEvent<HTMLButtonElement>, cancelled = false) => {
+    const drag = dragRef.current;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    e.stopPropagation();
+    dragRef.current = null;
+    if (!cancelled && (localPosRef.current.x !== drag.initial.x || localPosRef.current.y !== drag.initial.y)) {
+      updateNode(node.id, localPosRef.current);
+    }
+    clearDragPosition(node.id);
+    setIsDraggingNode(false);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
+  const handleKeyboardMove = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     const step = e.shiftKey ? 50 : 10;
     const moves: Record<string, NodePosition> = {
       ArrowUp: { x: node.x, y: node.y - step },
@@ -104,17 +95,12 @@ const PersonNode = ({ node }: PersonNodeProps) => {
   return (
     <div
       className={`person-node glass ${isSelected ? 'selected' : ''}`}
-      onClick={handleClick}
-      onKeyDown={handleNodeKeyDown}
-      role="button"
-      aria-label={`Otwórz profil: ${node.firstName || ''} ${node.lastName || ''}`.trim()}
-      tabIndex={0}
       style={{
         position: 'absolute',
         left: displayX,
         top: displayY,
         width: `${NODE_WIDTH}px`,
-        minHeight: '90px',
+        height: `${NODE_HEIGHT}px`,
         borderRadius: '8px',
         padding: '12px',
         display: 'flex',
@@ -128,11 +114,16 @@ const PersonNode = ({ node }: PersonNodeProps) => {
         backgroundColor: node.gender === 'female' ? 'rgba(236,72,153, 0.1)' : 'rgba(59,130,246, 0.1)',
       }}
     >
-      <div
+      <button
+        type="button"
+        className="drag-handle"
+        onPointerMove={handleDragMove}
+        onPointerUp={e => finishDrag(e)}
+        onPointerCancel={e => finishDrag(e, true)}
+        onLostPointerCapture={e => finishDrag(e, true)}
         onPointerDown={handleDragStart}
         onClick={e => e.stopPropagation()}
         onKeyDown={handleKeyboardMove}
-        role="button"
         aria-label="Przesuń osobę"
         tabIndex={0}
         style={{
@@ -142,16 +133,20 @@ const PersonNode = ({ node }: PersonNodeProps) => {
           transform: 'translateX(-50%)',
           background: 'var(--node-border)',
           borderRadius: '8px',
-          padding: '2px 8px',
+          padding: '6px 12px',
+          touchAction: 'none',
+          border: 'none',
           cursor: 'grab',
           display: 'flex',
           alignItems: 'center',
         }}
       >
         <GripHorizontal size={14} color="var(--text-secondary)" />
-      </div>
+      </button>
 
-      <div style={{
+      <button type="button" className="person-profile" onClick={openProfile}
+        aria-label={`Otwórz profil: ${node.firstName || ''} ${node.lastName || ''}`.trim()}>
+      <span style={{
         width: '56px',
         height: '56px',
         borderRadius: '50%',
@@ -167,16 +162,17 @@ const PersonNode = ({ node }: PersonNodeProps) => {
         ) : (
           <User size={28} color="var(--text-secondary)" />
         )}
-      </div>
+      </span>
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+      <span style={{ flex: 1, overflow: 'hidden' }}>
+        <span style={{ margin: 0, fontSize: '15px', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
           {node.firstName} {node.lastName} {node.maidenName ? `(z d. ${node.maidenName})` : ''}
-        </h3>
-        <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+        </span>
+        <span style={{ display: 'block', margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
           {node.birthDate ? formatYear(node.birthDate) : '?'}{node.deathDate ? ` - ${formatYear(node.deathDate)}` : ''}
-        </p>
-      </div>
+        </span>
+      </span>
+      </button>
     </div>
   );
 };

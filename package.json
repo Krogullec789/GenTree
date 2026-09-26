@@ -15,7 +15,12 @@
     "test:e2e": "node ./scripts/run-e2e.mjs",
     "verify:quick": "npm run lint && npm run typecheck && npm test",
     "verify:app": "node --import tsx ./scripts/verify-local-app.mjs",
-    "verify:full": "npm run verify:quick && npm run build && npm run test:e2e && npm run verify:app"
+    "verify:full": "npm run verify:quick && npm run build && npm run test:e2e && npm run verify:app",
+    "dev:demo": "vite --mode demo",
+    "build:demo": "tsc --noEmit && vite build --mode demo --base=./",
+    "test:performance": "vitest run src/store/__tests__/dragPerformance.test.tsx",
+    "demo:capture": "node ./scripts/capture-demo.mjs",
+    "verify:demo": "npm run build:demo && node ./scripts/verify-demo.mjs"
   },
   "dependencies": {
     "cors": "^2.8.6",

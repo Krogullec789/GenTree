@@ -38,3 +38,7 @@ blob-report/
 *.njsproj
 *.sln
 *.sw?
+
+# Isolated browser fixtures and local capture output
+tests/e2e/e2e-test-db.json
+output/playwright/

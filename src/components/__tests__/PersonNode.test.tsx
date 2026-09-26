@@ -2,11 +2,16 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DragProvider } from '../../store/DragContext';
 import PersonNode from '../PersonNode';
 import * as TreeContextModule from '../../store/TreeContext';
 import type { PersonNode as PersonNodeType, TreeContextValue } from '../../types/tree';
 
 const mockTreeContext: TreeContextValue = {
+  isDemo: false,
+  retrySave: vi.fn(),
+  reloadTree: vi.fn(),
+  resetDemo: vi.fn(),
   nodes: {},
   edges: {},
   version: 'v1',
@@ -16,11 +21,10 @@ const mockTreeContext: TreeContextValue = {
   canRedo: false,
   selectedNodeId: null,
   isPanelOpen: false,
-  dragPositions: {},
   focusNodeId: null,
+  fitViewRequest: 0,
   setSelectedNodeId: vi.fn(),
   setIsPanelOpen: vi.fn(),
-  setCanvasScale: vi.fn(),
   setFocusNodeId: vi.fn(),
   addNode: vi.fn(),
   updateNode: vi.fn(),
@@ -30,12 +34,7 @@ const mockTreeContext: TreeContextValue = {
   undo: vi.fn(),
   redo: vi.fn(),
   applyAutoLayout: vi.fn(),
-  setNodes: vi.fn(),
-  setEdges: vi.fn(),
   replaceTree: vi.fn(),
-  canvasScale: 1,
-  setDragPosition: vi.fn(),
-  clearDragPosition: vi.fn(),
 };
 
 vi.spyOn(TreeContextModule, 'useTreeInfo').mockReturnValue(mockTreeContext);
@@ -56,7 +55,7 @@ describe('PersonNode Component', () => {
       y: 100,
     };
 
-    render(<PersonNode node={nodeData} />);
+    render(<DragProvider><PersonNode node={nodeData} /></DragProvider>);
 
     expect(screen.getByText('Jan Kowalski')).toBeInTheDocument();
     expect(screen.getByText('1980')).toBeInTheDocument();
@@ -75,7 +74,7 @@ describe('PersonNode Component', () => {
       y: 100,
     };
 
-    render(<PersonNode node={nodeData} />);
+    render(<DragProvider><PersonNode node={nodeData} /></DragProvider>);
     screen.getByLabelText('Przesuń osobę').focus();
     await user.keyboard('{ArrowRight}{ArrowDown}');
 

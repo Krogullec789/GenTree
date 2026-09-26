@@ -8,13 +8,12 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { canAddRelationship, normalizeTreeDocument, validateTreeData } from '../utils/treeData';
+import { canAddRelationship, validateTreeData } from '../utils/treeData';
 import { layoutTree } from '../utils/treeLayout';
 import type {
   EdgeMap,
   NewPersonNode,
   NodeMap,
-  NodePosition,
   PersonNode,
   RelationshipType,
   SaveStatus,
@@ -22,8 +21,10 @@ import type {
   TreeData,
 } from '../types/tree';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const API_TOKEN = import.meta.env.VITE_API_TOKEN || '';
+import { SaveQueue } from './saveQueue';
+import { treeStorage, DEMO_MODE } from './treeStorage';
+import { createDemoTree } from '../utils/demoTree';
+import { DragProvider } from './DragContext';
 
 const TreeContext = createContext<TreeContextValue | null>(null);
 
@@ -36,11 +37,6 @@ export const useTreeInfo = (): TreeContextValue => {
 };
 
 const createId = () => crypto.randomUUID();
-
-const apiHeaders = (extra: Record<string, string> = {}) => ({
-  ...(API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {}),
-  ...extra,
-});
 
 interface TreeProviderProps {
   children: React.ReactNode;
@@ -56,14 +52,12 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
   const [historyLength, setHistoryLength] = useState(0);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [fitViewRequest, setFitViewRequest] = useState(0);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
-  const [dragPositions, setDragPositions] = useState<Record<string, NodePosition>>({});
-  const [canvasScale, setCanvasScale] = useState(1);
-
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const saveSkipCountRef = useRef(0);
-  const hasLoadedRef = useRef(false);
-  const versionRef = useRef<string | null>(null);
+  const queueRef = useRef<SaveQueue | null>(null);
+  const loadedRef = useRef(false);
+  const historyIndexRef = useRef(0);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const historyRef = useRef<TreeData[]>([]);
   const currentTreeRef = useRef<TreeData>({ nodes: {}, edges: {} });
 
@@ -78,137 +72,77 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     setEdges(data.edges);
   }, []);
 
-  const setCurrentVersion = useCallback((nextVersion: string | null) => {
-    versionRef.current = nextVersion;
-    setVersion(nextVersion);
-  }, []);
-
   const resetHistory = useCallback((data: TreeData) => {
     const next = snapshot(data);
     currentTreeRef.current = next;
     historyRef.current = [next];
+    historyIndexRef.current = 0;
     setHistoryIndex(0);
     setHistoryLength(1);
   }, [snapshot]);
 
   const commitTree = useCallback((data: TreeData) => {
+    if (!loadedRef.current) return;
     const next = snapshot(data);
-    const nextHistory = [...historyRef.current.slice(0, historyIndex + 1), next].slice(-50);
+    const nextHistory = [...historyRef.current.slice(0, historyIndexRef.current + 1), next].slice(-50);
     historyRef.current = nextHistory;
+    historyIndexRef.current = nextHistory.length - 1;
     setHistoryIndex(nextHistory.length - 1);
     setHistoryLength(nextHistory.length);
     setTreeState(next);
-    setLastError(null);
-    setSaveStatus('idle');
-  }, [historyIndex, setTreeState, snapshot]);
+    queueRef.current?.enqueue(next);
+  }, [setTreeState, snapshot]);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/tree`, { headers: apiHeaders() })
-      .then(async res => {
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        const normalizedData = normalizeTreeDocument(data);
-        if (!normalizedData) {
-          throw new Error('Server returned invalid tree data. Local state was not replaced.');
-        }
-
-        const loadedNodes = normalizedData.nodes;
-        const loadedEdges = normalizedData.edges;
-        setCurrentVersion(normalizedData.version);
-        hasLoadedRef.current = true;
-
-        if (Object.keys(loadedNodes).length > 0) {
-          saveSkipCountRef.current = 1;
-          setNodes(loadedNodes);
-          setEdges(loadedEdges);
-          resetHistory({ nodes: loadedNodes, edges: loadedEdges });
-          setSaveStatus('saved');
-        } else {
-          const rootId = createId();
-          const rootNode: PersonNode = {
-            id: rootId,
-            firstName: 'Jan',
-            lastName: 'Kowalski',
-            maidenName: '',
-            birthDate: '',
-            deathDate: '',
-            bio: 'Podstawowy zarys drzewa.',
-            gender: 'male',
-            avatar: '',
-            x: window.innerWidth / 2 - 120,
-            y: window.innerHeight / 2 - 50,
-          };
-          const rootTree = { nodes: { [rootId]: rootNode }, edges: {} };
-          setNodes(rootTree.nodes);
-          setEdges(rootTree.edges);
-          resetHistory(rootTree);
-          setSelectedNodeId(rootId);
-          setIsPanelOpen(true);
-          setSaveStatus('idle');
-        }
-      })
-      .catch(e => {
-        console.error('Failed to fetch tree data', e);
-        hasLoadedRef.current = false;
-        setSaveStatus('error');
-        setLastError(e instanceof Error ? e.message : 'Failed to fetch tree data');
+    let active = true;
+    loadedRef.current = false;
+    treeStorage.load().then(document => {
+      if (!active) return;
+      const tree = { nodes: document.nodes, edges: document.edges };
+      setTreeState(tree);
+      resetHistory(tree);
+      setVersion(document.version);
+      setLastError(null);
+      setSaveStatus('saved');
+      setFitViewRequest(request => request + 1);
+      loadedRef.current = true;
+      queueRef.current = new SaveQueue(document.version, treeStorage.save, (status, error, nextVersion) => {
+        setSaveStatus(status);
+        setLastError(error);
+        setVersion(nextVersion);
       });
-  }, [resetHistory, setCurrentVersion]);
-
-  useEffect(() => {
-    const expectedVersion = versionRef.current;
-    if (!hasLoadedRef.current || !expectedVersion || Object.keys(nodes).length === 0) return;
-
-    if (saveSkipCountRef.current > 0) {
-      saveSkipCountRef.current -= 1;
-      return;
-    }
-
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-
-    saveTimerRef.current = setTimeout(() => {
-      setSaveStatus('saving');
-      fetch(`${API_URL}/api/tree`, {
-        method: 'POST',
-        headers: apiHeaders({ 'Content-Type': 'application/json', 'If-Match': expectedVersion }),
-        body: JSON.stringify({ nodes, edges }),
-      })
-        .then(async res => {
-          const body = await res.json().catch(() => ({}));
-          if (res.status === 409) {
-            setSaveStatus('conflict');
-            setLastError('Dane zmieniły się w innym oknie. Odśwież stronę przed kolejnym zapisem.');
-            return;
-          }
-          if (!res.ok) throw new Error(body.error || `Server returned ${res.status}`);
-          if (typeof body.version === 'string') setCurrentVersion(body.version);
-          setSaveStatus('saved');
-          setLastError(null);
-        })
-        .catch(e => {
-          console.error('Failed to save tree data', e);
-          setSaveStatus('error');
-          setLastError(e instanceof Error ? e.message : 'Failed to save tree data');
-        });
-    }, 500);
-
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    }).catch(error => {
+      if (!active) return;
+      setSaveStatus('error');
+      setLastError(error instanceof Error ? error.message : 'Nie udało się wczytać drzewa.');
+    });
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (!queueRef.current?.dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
     };
-  }, [nodes, edges, setCurrentVersion]);
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+    return () => {
+      active = false;
+      queueRef.current?.dispose();
+      queueRef.current = null;
+      window.removeEventListener('beforeunload', warnBeforeLeaving);
+    };
+  }, [loadAttempt, resetHistory, setTreeState]);
 
-  const setDragPosition = useCallback((id: string, pos: NodePosition) => {
-    setDragPositions(prev => ({ ...prev, [id]: pos }));
+  const retrySave = useCallback(() => {
+    if (loadedRef.current) queueRef.current?.retry();
+    else { setSaveStatus('loading'); setLoadAttempt(attempt => attempt + 1); }
   }, []);
 
-  const clearDragPosition = useCallback((id: string) => {
-    setDragPositions(prev => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
+  const reloadTree = useCallback(() => {
+    loadedRef.current = false;
+    queueRef.current?.dispose();
+    queueRef.current = null;
+    setSelectedNodeId(null);
+    setIsPanelOpen(false);
+    setSaveStatus('loading');
+    setLoadAttempt(attempt => attempt + 1);
   }, []);
 
   const addNode = useCallback((nodeData: NewPersonNode) => {
@@ -222,6 +156,7 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
   const updateNode = useCallback((id: string, updates: Partial<PersonNode>) => {
     const current = currentTreeRef.current;
     if (!current.nodes[id]) return;
+    if (Object.entries(updates).every(([key, value]) => current.nodes[id][key as keyof PersonNode] === value)) return;
 
     commitTree({
       nodes: {
@@ -269,7 +204,6 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
 
     const id = createId();
     commitTree({ nodes: current.nodes, edges: { ...current.edges, [id]: { id, sourceId, targetId, type } } });
-    setLastError(null);
     return true;
   }, [commitTree]);
 
@@ -281,32 +215,35 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
   }, [commitTree]);
 
   const undo = useCallback(() => {
-    const nextIndex = historyIndex - 1;
+    if (!loadedRef.current) return;
+    const nextIndex = historyIndexRef.current - 1;
     const next = historyRef.current[nextIndex];
     if (!next) return;
 
+    historyIndexRef.current = nextIndex;
     setHistoryIndex(nextIndex);
     setTreeState(snapshot(next));
-    setLastError(null);
-    setSaveStatus('idle');
-  }, [historyIndex, setTreeState, snapshot]);
+    queueRef.current?.enqueue(next);
+  }, [setTreeState, snapshot]);
 
   const redo = useCallback(() => {
-    const nextIndex = historyIndex + 1;
+    if (!loadedRef.current) return;
+    const nextIndex = historyIndexRef.current + 1;
     const next = historyRef.current[nextIndex];
     if (!next) return;
 
+    historyIndexRef.current = nextIndex;
     setHistoryIndex(nextIndex);
     setTreeState(snapshot(next));
-    setLastError(null);
-    setSaveStatus('idle');
-  }, [historyIndex, setTreeState, snapshot]);
+    queueRef.current?.enqueue(next);
+  }, [setTreeState, snapshot]);
 
   const applyAutoLayout = useCallback(() => {
     commitTree(layoutTree(currentTreeRef.current));
+    setFitViewRequest(request => request + 1);
   }, [commitTree]);
 
-  const replaceTree = useCallback((data: TreeData, nextVersion: string | null = null) => {
+  const replaceTree = useCallback((data: TreeData) => {
     const validation = validateTreeData(data);
     if (!validation.valid) {
       setSaveStatus('error');
@@ -314,14 +251,13 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
       return;
     }
 
-    saveSkipCountRef.current = 0;
     commitTree(validation.data);
-    if (nextVersion) setCurrentVersion(nextVersion);
+    setFitViewRequest(request => request + 1);
     setSelectedNodeId(null);
     setIsPanelOpen(false);
-    setLastError(null);
-    setSaveStatus('idle');
-  }, [commitTree, setCurrentVersion]);
+  }, [commitTree]);
+
+  const resetDemo = useCallback(() => replaceTree(createDemoTree()), [replaceTree]);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < historyLength - 1;
@@ -336,14 +272,10 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     canRedo,
     selectedNodeId,
     isPanelOpen,
-    canvasScale,
-    dragPositions,
     focusNodeId,
+    fitViewRequest,
     setSelectedNodeId,
     setIsPanelOpen,
-    setCanvasScale,
-    setDragPosition,
-    clearDragPosition,
     setFocusNodeId,
     addNode,
     updateNode,
@@ -353,9 +285,11 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     undo,
     redo,
     applyAutoLayout,
-    setNodes,
-    setEdges,
     replaceTree,
+    isDemo: DEMO_MODE,
+    retrySave,
+    reloadTree,
+    resetDemo,
   }), [
     nodes,
     edges,
@@ -366,11 +300,8 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     canRedo,
     selectedNodeId,
     isPanelOpen,
-    canvasScale,
-    dragPositions,
     focusNodeId,
-    setDragPosition,
-    clearDragPosition,
+    fitViewRequest,
     addNode,
     updateNode,
     removeNode,
@@ -380,11 +311,14 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     redo,
     applyAutoLayout,
     replaceTree,
+    retrySave,
+    reloadTree,
+    resetDemo,
   ]);
 
   return (
     <TreeContext.Provider value={value}>
-      {children}
+      <DragProvider>{children}</DragProvider>
     </TreeContext.Provider>
   );
 };

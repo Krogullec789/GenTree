@@ -1,11 +1,14 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useTreeInfo } from '../store/TreeContext';
+import RelationshipLines from './RelationshipLines';
+import { useCanvasScale } from '../store/DragContext';
 import PersonNode from './PersonNode';
 import { NODE_WIDTH, NODE_HEIGHT } from '../constants/layout';
 
 const Canvas = () => {
-  const { nodes, edges, dragPositions, focusNodeId, setFocusNodeId, setSelectedNodeId, setIsPanelOpen, setCanvasScale } = useTreeInfo();
+  const { nodes, edges, saveStatus, addNode, fitViewRequest, focusNodeId, setFocusNodeId, setSelectedNodeId, setIsPanelOpen } = useTreeInfo();
 
+  const { setCanvasScale } = useCanvasScale();
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -45,7 +48,7 @@ const Canvas = () => {
   }, [focusNodeId, nodes, setFocusNodeId, transform.scale]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('.person-node')) return;
+    if (!e.isPrimary || e.button !== 0 || (e.target as Element).closest('.person-node, button, .canvas-controls, .empty-tree')) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
     setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
@@ -125,66 +128,46 @@ const Canvas = () => {
 
   const visibleNodeIds = useMemo(() => new Set(visibleNodes.map(node => node.id)), [visibleNodes]);
 
-  const renderEdges = () => {
-    return Object.values(edges).map((edge) => {
-      if (!visibleNodeIds.has(edge.sourceId) && !visibleNodeIds.has(edge.targetId)) return null;
 
-      const sourceNode = nodes[edge.sourceId];
-      const targetNode = nodes[edge.targetId];
-
-      if (!sourceNode || !targetNode) return null;
-
-      // Use live drag position if this node is being dragged, otherwise use stored position
-      const sPos = dragPositions[edge.sourceId] || sourceNode;
-      const tPos = dragPositions[edge.targetId] || targetNode;
-
-      const nodeW = NODE_WIDTH;
-      const nodeH = NODE_HEIGHT;
-
-      let startX, startY, endX, endY;
-
-      if (edge.type === 'parent-child') {
-        startX = sPos.x + nodeW / 2;
-        startY = sPos.y + nodeH;
-        endX = tPos.x + nodeW / 2;
-        endY = tPos.y;
-      } else {
-        if (sPos.x < tPos.x) {
-          startX = sPos.x + nodeW;
-          startY = sPos.y + nodeH / 2;
-          endX = tPos.x;
-          endY = tPos.y + nodeH / 2;
-        } else {
-          startX = sPos.x;
-          startY = sPos.y + nodeH / 2;
-          endX = tPos.x + nodeW;
-          endY = tPos.y + nodeH / 2;
-        }
-      }
-
-      let pathData = '';
-      if (edge.type === 'parent-child') {
-        pathData = `M ${startX} ${startY} C ${startX} ${(startY + endY) / 2}, ${endX} ${(startY + endY) / 2}, ${endX} ${endY}`;
-      } else {
-        pathData = `M ${startX} ${startY} L ${endX} ${endY}`;
-      }
-
-      return (
-        <path
-          key={edge.id}
-          d={pathData}
-          fill="none"
-          stroke={edge.type === 'partner' ? 'var(--accent-color)' : 'var(--line-color)'}
-          strokeWidth="3"
-          strokeDasharray={edge.type === 'partner' ? '5,5' : 'none'}
-        />
-      );
+  const zoom = (factor: number) => {
+    setTransform(prev => {
+      const scale = Math.min(3, Math.max(0.2, prev.scale * factor));
+      const ratio = scale / prev.scale;
+      return { scale, x: viewport.width / 2 - (viewport.width / 2 - prev.x) * ratio, y: viewport.height / 2 - (viewport.height / 2 - prev.y) * ratio };
     });
+  };
+
+  const fitTree = useCallback(() => {
+    const people = Object.values(nodes);
+    if (!people.length) return;
+    const minX = Math.min(...people.map(node => node.x));
+    const minY = Math.min(...people.map(node => node.y));
+    const width = Math.max(...people.map(node => node.x + NODE_WIDTH)) - minX;
+    const height = Math.max(...people.map(node => node.y + NODE_HEIGHT)) - minY;
+    const scale = Math.min(1.5, Math.max(0.05, Math.min((viewport.width - 48) / width, (viewport.height - 100) / height)));
+    setTransform({ scale, x: (viewport.width - width * scale) / 2 - minX * scale, y: (viewport.height - height * scale) / 2 - minY * scale });
+  }, [nodes, viewport]);
+
+  const lastFitRequest = useRef(-1);
+  useEffect(() => {
+    if (lastFitRequest.current === fitViewRequest || viewport.width === 0 || viewport.height === 0 || Object.keys(nodes).length === 0) return;
+    // Fit after the browser has measured the initial canvas, before interaction.
+    const frame = requestAnimationFrame(() => { lastFitRequest.current = fitViewRequest; fitTree(); });
+    return () => cancelAnimationFrame(frame);
+  }, [fitTree, fitViewRequest, nodes, viewport]);
+
+  const addFirstPerson = () => {
+    const id = addNode({ firstName: 'Nowa', lastName: 'Osoba', gender: 'male', x: 80, y: 80 });
+    setSelectedNodeId(id);
+    setIsPanelOpen(true);
+    setFocusNodeId(id);
   };
 
   return (
     <div
       ref={canvasRef}
+      aria-label="Obszar drzewa"
+      data-testid="tree-canvas"
       style={{
         flex: 1,
         position: 'relative',
@@ -198,6 +181,19 @@ const Canvas = () => {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
+      {Object.keys(nodes).length === 0 && (
+        <div className="empty-tree">
+          <h2>{saveStatus === 'loading' ? 'Wczytywanie drzewa…' : 'Tutaj zaczyna się Twoja historia'}</h2>
+          <p>Dodaj pierwszą osobę, a następnie połącz ją z rodziną.</p>
+          <button className="btn" disabled={saveStatus === 'loading' || saveStatus === 'error'} onClick={addFirstPerson}>Dodaj pierwszą osobę</button>
+        </div>
+      )}
+      <div className="canvas-controls" role="group" aria-label="Widok drzewa">
+        <button className="btn secondary" aria-label="Pomniejsz" onClick={() => zoom(1 / 1.25)}>−</button>
+        <output aria-label="Powiększenie">{Math.round(transform.scale * 100)}%</output>
+        <button className="btn secondary" aria-label="Powiększ" onClick={() => zoom(1.25)}>+</button>
+        <button className="btn secondary" onClick={fitTree}>Pokaż całe drzewo</button>
+      </div>
       <div style={{
         transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
         transformOrigin: '0 0',
@@ -219,7 +215,7 @@ const Canvas = () => {
           overflow: 'visible',
         }}>
           <g transform="translate(5000, 5000)">
-            {renderEdges()}
+            <RelationshipLines nodes={nodes} edges={edges} visibleNodeIds={visibleNodeIds} />
           </g>
         </svg>
 

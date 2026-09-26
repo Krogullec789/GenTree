@@ -42,6 +42,10 @@ export interface TreeDocument extends TreeData {
 export type SaveStatus = 'idle' | 'loading' | 'saving' | 'saved' | 'error' | 'conflict';
 
 export interface TreeContextValue extends TreeData {
+  isDemo: boolean;
+  retrySave: () => void;
+  reloadTree: () => void;
+  resetDemo: () => void;
   version: string | null;
   saveStatus: SaveStatus;
   lastError: string | null;
@@ -49,14 +53,10 @@ export interface TreeContextValue extends TreeData {
   canRedo: boolean;
   selectedNodeId: string | null;
   isPanelOpen: boolean;
-  canvasScale: number;
-  dragPositions: Record<string, NodePosition>;
   focusNodeId: string | null;
+  fitViewRequest: number;
   setSelectedNodeId: React.Dispatch<React.SetStateAction<string | null>>;
   setIsPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setCanvasScale: React.Dispatch<React.SetStateAction<number>>;
-  setDragPosition: (id: string, pos: NodePosition) => void;
-  clearDragPosition: (id: string) => void;
   setFocusNodeId: React.Dispatch<React.SetStateAction<string | null>>;
   addNode: (nodeData: NewPersonNode) => string;
   updateNode: (id: string, updates: Partial<PersonNode>) => void;
@@ -66,7 +66,5 @@ export interface TreeContextValue extends TreeData {
   undo: () => void;
   redo: () => void;
   applyAutoLayout: () => void;
-  setNodes: React.Dispatch<React.SetStateAction<NodeMap>>;
-  setEdges: React.Dispatch<React.SetStateAction<EdgeMap>>;
-  replaceTree: (data: TreeData, nextVersion?: string | null) => void;
+  replaceTree: (data: TreeData) => void;
 }

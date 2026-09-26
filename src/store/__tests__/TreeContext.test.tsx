@@ -26,6 +26,7 @@ const Harness = () => {
     canUndo,
     canRedo,
     updateNode,
+    removeNode,
     undo,
     redo,
     applyAutoLayout,
@@ -42,6 +43,7 @@ const Harness = () => {
       <div data-testid="can-redo">{String(canRedo)}</div>
       <button onClick={() => updateNode('1', { firstName: 'Adam' })}>Update</button>
       <button onClick={() => updateNode('1', { firstName: 'Ewa' })}>Update again</button>
+      <button onClick={() => removeNode('1')}>Remove</button>
       <button onClick={undo}>Undo</button>
       <button onClick={redo}>Redo</button>
       <button onClick={applyAutoLayout}>Auto layout</button>
@@ -52,6 +54,7 @@ const Harness = () => {
 describe('TreeProvider', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('does not replace local state with a fallback root when the server returns invalid data', async () => {
@@ -97,7 +100,7 @@ describe('TreeProvider', () => {
       }),
     );
     expect(await screen.findByTestId('status')).toHaveTextContent('conflict');
-    expect(screen.getByTestId('error')).toHaveTextContent('Dane zmieniły się w innym oknie');
+    expect(screen.getByTestId('error')).toHaveTextContent('Drzewo zmieniło się w innym oknie');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -170,4 +173,22 @@ describe('TreeProvider', () => {
     expect(screen.getByTestId('name')).toHaveTextContent('Ewa');
     expect(screen.getByTestId('can-redo')).toHaveTextContent('false');
   });
+  it('persists an empty tree and does not invent a person when loading it', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ nodes: { '1': validNode }, edges: {}, version: 'v1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ version: 'v2' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ nodes: {}, edges: {}, version: 'v2' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const first = render(<TreeProvider><Harness /></TreeProvider>);
+    await waitFor(() => expect(screen.getByTestId('name')).toHaveTextContent('Jan'));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ nodes: {}, edges: {} });
+    first.unmount();
+    render(<TreeProvider><Harness /></TreeProvider>);
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('saved'));
+    expect(screen.getByTestId('name')).toHaveTextContent('missing');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
 });

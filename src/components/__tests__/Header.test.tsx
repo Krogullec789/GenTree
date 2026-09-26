@@ -7,6 +7,10 @@ import * as TreeContextModule from '../../store/TreeContext';
 import type { TreeContextValue } from '../../types/tree';
 
 const mockTreeContext: TreeContextValue = {
+  isDemo: false,
+  retrySave: vi.fn(),
+  reloadTree: vi.fn(),
+  resetDemo: vi.fn(),
   nodes: {},
   edges: {},
   version: 'v1',
@@ -16,12 +20,8 @@ const mockTreeContext: TreeContextValue = {
   canRedo: true,
   selectedNodeId: null,
   isPanelOpen: false,
-  canvasScale: 1,
-  dragPositions: {},
   focusNodeId: null,
-  setCanvasScale: vi.fn(),
-  setDragPosition: vi.fn(),
-  clearDragPosition: vi.fn(),
+  fitViewRequest: 0,
   addNode: vi.fn(),
   updateNode: vi.fn(),
   removeNode: vi.fn(),
@@ -30,8 +30,6 @@ const mockTreeContext: TreeContextValue = {
   undo: vi.fn(),
   redo: vi.fn(),
   applyAutoLayout: vi.fn(),
-  setNodes: vi.fn(),
-  setEdges: vi.fn(),
   replaceTree: vi.fn(),
   setSelectedNodeId: vi.fn(),
   setIsPanelOpen: vi.fn(),
@@ -49,7 +47,7 @@ describe('Header Component', () => {
   it('renders correctly with title and toolbar buttons', () => {
     render(<Header />);
     expect(screen.getByText('GenTree')).toBeInTheDocument();
-    expect(screen.getByText('Premium Family Tree')).toBeInTheDocument();
+    expect(screen.getByText('Twoja rodzinna historia')).toBeInTheDocument();
     expect(screen.getByText('Importuj JSON')).toBeInTheDocument();
     expect(screen.getByText('Eksportuj')).toBeInTheDocument();
     expect(screen.getByLabelText('Cofnij zmianę')).toBeInTheDocument();
@@ -80,7 +78,7 @@ describe('Header Component', () => {
     );
 
     render(<Header />);
-    await user.upload(screen.getByLabelText('Importuj JSON'), invalidFile);
+    await user.upload(screen.getByLabelText('Plik drzewa JSON'), invalidFile);
 
     expect(mockTreeContext.replaceTree).not.toHaveBeenCalled();
     await waitFor(() => {
@@ -111,7 +109,7 @@ describe('Header Component', () => {
     const file = new File([JSON.stringify(validTree)], 'tree.json', { type: 'application/json' });
 
     render(<Header />);
-    await user.upload(screen.getByLabelText('Importuj JSON'), file);
+    await user.upload(screen.getByLabelText('Plik drzewa JSON'), file);
 
     expect(mockTreeContext.replaceTree).not.toHaveBeenCalled();
     expect(await screen.findByRole('dialog')).toHaveTextContent('Zastąpić obecne drzewo?');

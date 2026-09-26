@@ -7,6 +7,10 @@ import type { PersonNode, TreeData } from '../types/tree';
 
 const Header = () => {
   const {
+    isDemo,
+    resetDemo,
+    retrySave,
+    reloadTree,
     nodes,
     edges,
     saveStatus,
@@ -22,6 +26,8 @@ const Header = () => {
     setFocusNodeId,
   } = useTreeInfo();
 
+  const [confirmation, setConfirmation] = useState<'reload' | 'reset' | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [importError, setImportError] = useState('');
@@ -129,10 +135,10 @@ const Header = () => {
     <>
       <header className="glass app-header">
         <div className="app-brand">
-          <img src="/logNew2.webp" alt="GenTree Logo" className="app-logo" />
+          <img src={`${import.meta.env.BASE_URL}logNew2.webp`} alt="GenTree Logo" className="app-logo" />
           <div>
             <h1>GenTree</h1>
-            <span>Premium Family Tree</span>
+            <span>{isDemo ? 'Demo · Twoja sesja' : 'Twoja rodzinna historia'}</span>
           </div>
         </div>
 
@@ -145,6 +151,7 @@ const Header = () => {
               aria-expanded={isOpen}
               aria-controls="person-search-results"
               aria-activedescendant={isOpen && results[activeResultIndex] ? `person-search-${results[activeResultIndex].id}` : undefined}
+              aria-label="Szukaj osoby"
               placeholder="Szukaj osoby..."
               value={query}
               onChange={e => {
@@ -198,12 +205,15 @@ const Header = () => {
         </div>
 
         <div className="app-actions">
+          {isDemo && <button className="btn secondary" onClick={() => setConfirmation('reset')}>Resetuj demo</button>}
+          {saveStatus === 'error' && <button className="btn secondary" onClick={retrySave}>Spróbuj ponownie</button>}
+          {saveStatus === 'conflict' && <button className="btn secondary" onClick={() => setConfirmation('reload')}>Wczytaj wersję serwera</button>}
           {(importError || lastError) && (
-            <span role="status" className="sync-status error">{importError || lastError}</span>
+            <span role="status" aria-label="Stan zapisu" className="sync-status error">{importError || lastError}</span>
           )}
-          {!importError && !lastError && saveStatus !== 'idle' && (
-            <span role="status" className="sync-status">
-              {saveStatus === 'saving' ? 'Zapisywanie...' : saveStatus === 'saved' ? 'Zapisano' : saveStatus === 'conflict' ? 'Konflikt zapisu' : ''}
+          {!importError && !lastError && (
+            <span role="status" aria-label="Stan zapisu" className="sync-status">
+              {saveStatus === 'saving' ? 'Zapisywanie...' : saveStatus === 'saved' ? 'Zapisano' : saveStatus === 'conflict' ? 'Konflikt zapisu' : saveStatus === 'loading' ? 'Wczytywanie…' : 'Niezapisane zmiany'}
             </span>
           )}
           <div className="history-actions" aria-label="Historia i układ drzewa">
@@ -213,16 +223,15 @@ const Header = () => {
             <button className="btn secondary icon-only" onClick={redo} disabled={!canRedo} aria-label="Ponów zmianę" title="Ponów zmianę">
               <Redo2 size={18} />
             </button>
-            <button className="btn secondary" onClick={applyAutoLayout} aria-label="Ułóż drzewo automatycznie">
+            <button className="btn secondary" disabled={saveStatus === 'loading'} onClick={applyAutoLayout} aria-label="Ułóż drzewo automatycznie">
               <GitBranch size={18} />
               <span>Ułóż drzewo</span>
             </button>
           </div>
-          <label className="btn secondary import-button">
-            <Upload size={18} />
-            <span>Importuj JSON</span>
-            <input aria-label="Importuj JSON" type="file" accept=".json" onChange={handleImport} />
-          </label>
+          <button className="btn secondary" disabled={saveStatus === 'loading'} onClick={() => importRef.current?.click()}>
+            <Upload size={18} /><span>Importuj JSON</span>
+          </button>
+          <input ref={importRef} hidden aria-label="Plik drzewa JSON" type="file" accept=".json" onChange={handleImport} />
           <button className="btn" onClick={handleExport}>
             <Download size={18} />
             <span>Eksportuj</span>
@@ -230,6 +239,14 @@ const Header = () => {
         </div>
       </header>
 
+      <ConfirmModal
+        isOpen={confirmation !== null}
+        title={confirmation === 'reload' ? 'Wczytać wersję serwera?' : 'Przywrócić przykładową rodzinę?'}
+        message="Najpierw pobierzemy kopię obecnego drzewa. Następnie zastąpimy dane widoczne w tym oknie."
+        confirmLabel="Pobierz kopię i kontynuuj"
+        onConfirm={() => { downloadTree({ nodes, edges }, 'gentree-backup.json'); if (confirmation === 'reload') reloadTree(); else resetDemo(); setConfirmation(null); }}
+        onCancel={() => setConfirmation(null)}
+      />
       <ConfirmModal
         isOpen={pendingImport !== null}
         title="Zastąpić obecne drzewo?"

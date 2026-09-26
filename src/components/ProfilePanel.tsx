@@ -163,7 +163,7 @@ const ProfilePanel = ({ isOpen }: ProfilePanelProps) => {
       <ConfirmModal
         isOpen={showDeleteModal}
         title="Usuń osobę"
-        message={`Czy na pewno chcesz usunąć ${node.firstName} ${node.lastName}? Tej operacji nie można cofnąć.`}
+        message={`Czy na pewno chcesz usunąć ${node.firstName} ${node.lastName}? Osoba i jej relacje zostaną usunięte. Możesz cofnąć tę zmianę przyciskiem Cofnij.`}
         confirmLabel="Usuń"
         danger
         onConfirm={() => { setShowDeleteModal(false); removeNode(node.id); }}

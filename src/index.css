@@ -472,3 +472,37 @@ label {
     max-width: none;
   }
 }
+
+/* Toolbar remains reachable from a narrow phone to a desktop. */
+.app-header { height: auto; min-height: 64px; flex: 0 0 auto; flex-wrap: wrap; padding: 10px 20px; }
+.app-actions { flex: 1 1 440px; flex-wrap: wrap; justify-content: flex-end; gap: 8px; min-width: 0; }
+.app-search { flex: 1 1 180px; min-width: 160px; }
+.sync-status { overflow-wrap: anywhere; }
+.app-container { height: 100dvh; }
+.person-profile { display: flex; align-items: center; gap: 12px; width: 100%; color: inherit; text-align: left; font: inherit; border: 0; background: transparent; cursor: pointer; }
+.person-profile > span:last-child > span:first-child { display: block; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 4px; }
+.canvas-controls { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 8px; white-space: nowrap; border-radius: 12px; padding: 8px; background: #182437; border: 1px solid var(--glass-border); }
+.canvas-controls output { min-width: 42px; text-align: center; font-size: 12px; }
+.empty-tree { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18px; text-align: center; padding: 24px; z-index: 20; }
+.empty-tree p { color: var(--text-secondary); max-width: 360px; }
+@media (max-width: 760px) {
+  .app-header { padding: 8px 12px; gap: 8px; }
+  .app-actions { flex-basis: 100%; justify-content: flex-start; margin: 0; }
+  .app-search { order: 0; min-width: 0; }
+  .history-actions { order: 0; width: auto; }
+  .sync-status { text-align: left; }
+  .app-brand { min-width: 0; }
+  .app-brand span { font-size: 10px; }
+  .btn { min-height: 40px; }
+  .canvas-controls { gap: 4px; padding: 6px; bottom: 8px; }
+  .drag-handle { min-height: 32px; min-width: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+@media (max-width: 760px) {
+  .app-actions .sync-status { width: auto; flex: 1 1 130px; }
+  .app-actions .history-actions { flex: 0 0 auto; }
+}

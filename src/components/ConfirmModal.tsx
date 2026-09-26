@@ -37,7 +37,7 @@ const ConfirmModal = ({
 
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusable = Array.from(modalRef.current?.querySelectorAll<HTMLElement>(focusableSelector) || []);
-    focusable[focusable.length - 1]?.focus();
+    focusable[0]?.focus();
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
