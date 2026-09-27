@@ -158,6 +158,7 @@ const Canvas = () => {
 
   const addFirstPerson = () => {
     const id = addNode({ firstName: 'Nowa', lastName: 'Osoba', gender: 'male', x: 80, y: 80 });
+    if (!id) return;
     setSelectedNodeId(id);
     setIsPanelOpen(true);
     setFocusNodeId(id);

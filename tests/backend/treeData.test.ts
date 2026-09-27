@@ -90,3 +90,29 @@ describe('tree data domain validation', () => {
     });
   });
 });
+
+describe('strict array imports', () => {
+  it.each([null, 42, 'person', {}, { id: '' }, { id: '  ' }])('rejects malformed node entry %j instead of dropping it', entry => {
+    const result = validateTreeData({ nodes: [person('a'), entry], edges: [] });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('nodes[1]');
+    expect(result.data).toBeNull();
+  });
+
+  it('rejects duplicate person IDs instead of overwriting the first person', () => {
+    const result = validateTreeData({ nodes: [person('a'), person('a', { firstName: 'Different' })], edges: [] });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('nodes[1]');
+    expect(result.errors[0]).toContain('"a"');
+  });
+
+  it.each([null, { id: 'ab', sourceId: 'a', targetId: 'b', type: 'partner' }])('rejects malformed or duplicate edge entries', entry => {
+    const result = validateTreeData({ nodes: [person('a'), person('b')], edges: [{ id: 'ab', sourceId: 'a', targetId: 'b', type: 'partner' }, entry] });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('edges[1]');
+  });
+
+  it('still accepts intentionally empty arrays', () => {
+    expect(normalizeTreeData({ nodes: [], edges: [] })).toEqual({ nodes: {}, edges: {} });
+  });
+});

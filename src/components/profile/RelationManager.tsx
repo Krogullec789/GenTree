@@ -1,7 +1,5 @@
 import { ChevronDown, ChevronUp, Link2, UserPlus, X } from 'lucide-react';
-import type { PersonNode, TreeEdge } from '../../types/tree';
-
-export type RelationKind = 'parent' | 'child' | 'partner';
+import type { PersonNode, TreeEdge, RelationKind } from '../../types/tree';
 
 interface RelationItem {
   edge: TreeEdge;

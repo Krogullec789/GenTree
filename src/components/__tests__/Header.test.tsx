@@ -23,6 +23,7 @@ const mockTreeContext: TreeContextValue = {
   focusNodeId: null,
   fitViewRequest: 0,
   addNode: vi.fn(),
+  addRelative: vi.fn(),
   updateNode: vi.fn(),
   removeNode: vi.fn(),
   addEdge: vi.fn(),
@@ -82,7 +83,7 @@ describe('Header Component', () => {
 
     expect(mockTreeContext.replaceTree).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(screen.getByText('Nieprawidłowy plik z danymi drzewa.')).toBeInTheDocument();
+      expect(screen.getByRole('status', { name: 'Stan zapisu' })).toHaveTextContent('Nieprawidłowy plik z danymi drzewa: Tree data must include nodes and edges.');
     });
   });
 

@@ -21,6 +21,8 @@ const validNode = {
 const Harness = () => {
   const {
     nodes,
+    edges,
+    addRelative,
     saveStatus,
     lastError,
     canUndo,
@@ -37,6 +39,10 @@ const Harness = () => {
     <>
       <div data-testid="status">{saveStatus}</div>
       <div data-testid="error">{lastError || ''}</div>
+      <div data-testid="people">{Object.keys(nodes).length}</div>
+      <div data-testid="relations">{JSON.stringify(Object.values(edges))}</div>
+      <button onClick={() => addRelative('1', 'parent', { firstName: 'Rodzic', gender: 'male', x: 0, y: 0 })}>Add parent</button>
+      <button onClick={() => updateNode('1', { firstName: '' })}>Invalid update</button>
       <div data-testid="name">{node?.firstName || 'missing'}</div>
       <div data-testid="x">{node?.x ?? 'missing'}</div>
       <div data-testid="can-undo">{String(canUndo)}</div>
@@ -191,4 +197,64 @@ describe('TreeProvider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+});
+
+
+describe('atomic domain edits', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('adds a relative with its edge in one undo step, including redo and persistence', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ nodes: { '1': validNode }, edges: {}, version: 'v1' }) })
+      .mockResolvedValue({ ok: true, json: async () => ({ version: 'v2' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<TreeProvider><Harness /></TreeProvider>);
+    await waitFor(() => expect(screen.getByTestId('name')).toHaveTextContent('Jan'));
+    await userEvent.click(screen.getByRole('button', { name: 'Add parent' }));
+    expect(screen.getByTestId('people')).toHaveTextContent('2');
+    const relations = screen.getByTestId('relations').textContent;
+    expect(JSON.parse(relations!)).toEqual([expect.objectContaining({ targetId: '1', type: 'parent-child' })]);
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByTestId('people')).toHaveTextContent('1');
+    expect(screen.getByTestId('relations')).toHaveTextContent('[]');
+    expect(screen.getByTestId('can-undo')).toHaveTextContent('false');
+    await userEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(screen.getByTestId('people')).toHaveTextContent('2');
+    expect(screen.getByTestId('relations').textContent).toBe(relations);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const saved = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(Object.keys(saved.nodes)).toHaveLength(2);
+    expect(Object.values(saved.edges)).toEqual(JSON.parse(relations!));
+  });
+
+  it('rejects a third parent without adding an orphan, history entry or save', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      nodes: { '1': validNode, a: { ...validNode, id: 'a' }, b: { ...validNode, id: 'b' } },
+      edges: {
+        a1: { id: 'a1', sourceId: 'a', targetId: '1', type: 'parent-child' },
+        b1: { id: 'b1', sourceId: 'b', targetId: '1', type: 'parent-child' },
+      }, version: 'v1',
+    }) });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<TreeProvider><Harness /></TreeProvider>);
+    await waitFor(() => expect(screen.getByTestId('name')).toHaveTextContent('Jan'));
+    const relations = screen.getByTestId('relations').textContent;
+    await userEvent.click(screen.getByRole('button', { name: 'Add parent' }));
+    expect(screen.getByTestId('error')).toHaveTextContent('more than two parents');
+    expect(screen.getByTestId('people')).toHaveTextContent('3');
+    expect(screen.getByTestId('relations').textContent).toBe(relations);
+    expect(screen.getByTestId('can-undo')).toHaveTextContent('false');
+    await new Promise(resolve => setTimeout(resolve, 550));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid direct updates without modifying the tree or its history', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ nodes: { '1': validNode }, edges: {}, version: 'v1' }) }));
+    render(<TreeProvider><Harness /></TreeProvider>);
+    await waitFor(() => expect(screen.getByTestId('name')).toHaveTextContent('Jan'));
+    await userEvent.click(screen.getByRole('button', { name: 'Invalid update' }));
+    expect(screen.getByTestId('name')).toHaveTextContent('Jan');
+    expect(screen.getByTestId('can-undo')).toHaveTextContent('false');
+    expect(screen.getByTestId('error')).toHaveTextContent('non-empty first name');
+  });
 });

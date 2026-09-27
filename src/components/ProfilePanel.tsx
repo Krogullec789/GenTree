@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { useTreeInfo } from '../store/TreeContext';
 import ConfirmModal from './ConfirmModal';
 import PersonForm from './profile/PersonForm';
-import RelationManager, { type RelationKind } from './profile/RelationManager';
+import RelationManager from './profile/RelationManager';
+import type { RelationKind } from '../types/tree';
 
 interface ProfilePanelProps {
   isOpen: boolean;
@@ -22,7 +23,7 @@ const ProfilePanel = ({ isOpen }: ProfilePanelProps) => {
     selectedNodeId,
     setIsPanelOpen,
     updateNode,
-    addNode,
+    addRelative,
     addEdge,
     removeNode,
     removeEdge,
@@ -60,7 +61,7 @@ const ProfilePanel = ({ isOpen }: ProfilePanelProps) => {
     const offsetX = isPartner ? 280 : 0;
     const offsetY = isParent ? -150 : (relationType === 'child' ? 150 : 0);
 
-    const newNodeId = addNode({
+    addRelative(node.id, relationType, {
       firstName: 'Nowa',
       lastName: 'Osoba',
       maidenName: '',
@@ -72,9 +73,6 @@ const ProfilePanel = ({ isOpen }: ProfilePanelProps) => {
       y: node.y + offsetY,
     });
 
-    if (isParent) addEdge(newNodeId, node.id, 'parent-child');
-    else if (isPartner) addEdge(node.id, newNodeId, 'partner');
-    else addEdge(node.id, newNodeId, 'parent-child');
   };
 
   const handleLinkNode = (personId: string) => {

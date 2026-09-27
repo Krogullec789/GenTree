@@ -27,6 +27,7 @@ const mockTreeContext: TreeContextValue = {
   setIsPanelOpen: vi.fn(),
   setFocusNodeId: vi.fn(),
   addNode: vi.fn(),
+  addRelative: vi.fn(),
   updateNode: vi.fn(),
   removeNode: vi.fn(),
   addEdge: vi.fn(),

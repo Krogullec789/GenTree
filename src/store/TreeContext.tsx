@@ -15,6 +15,7 @@ import type {
   NewPersonNode,
   NodeMap,
   PersonNode,
+  RelationKind,
   RelationshipType,
   SaveStatus,
   TreeContextValue,
@@ -82,8 +83,13 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
   }, [snapshot]);
 
   const commitTree = useCallback((data: TreeData) => {
-    if (!loadedRef.current) return;
-    const next = snapshot(data);
+    if (!loadedRef.current) return false;
+    const validation = validateTreeData(data);
+    if (!validation.valid) {
+      setLastError(validation.errors[0]);
+      return false;
+    }
+    const next = snapshot(validation.data);
     const nextHistory = [...historyRef.current.slice(0, historyIndexRef.current + 1), next].slice(-50);
     historyRef.current = nextHistory;
     historyIndexRef.current = nextHistory.length - 1;
@@ -91,6 +97,7 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     setHistoryLength(nextHistory.length);
     setTreeState(next);
     queueRef.current?.enqueue(next);
+    return true;
   }, [setTreeState, snapshot]);
 
   useEffect(() => {
@@ -149,8 +156,26 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     const current = currentTreeRef.current;
     const id = createId();
     const newNode = { id, ...nodeData };
-    commitTree({ nodes: { ...current.nodes, [id]: newNode }, edges: current.edges });
-    return id;
+    return commitTree({ nodes: { ...current.nodes, [id]: newNode }, edges: current.edges }) ? id : null;
+  }, [commitTree]);
+
+  const addRelative = useCallback((personId: string, kind: RelationKind, nodeData: NewPersonNode) => {
+    const current = currentTreeRef.current;
+    const id = createId();
+    const edgeId = createId();
+    const next: TreeData = {
+      nodes: { ...current.nodes, [id]: { ...nodeData, id } },
+      edges: {
+        ...current.edges,
+        [edgeId]: {
+          id: edgeId,
+          sourceId: kind === 'parent' ? id : personId,
+          targetId: kind === 'parent' ? personId : id,
+          type: kind === 'partner' ? 'partner' : 'parent-child',
+        },
+      },
+    };
+    return commitTree(next) ? id : null;
   }, [commitTree]);
 
   const updateNode = useCallback((id: string, updates: Partial<PersonNode>) => {
@@ -278,6 +303,7 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     setIsPanelOpen,
     setFocusNodeId,
     addNode,
+    addRelative,
     updateNode,
     removeNode,
     addEdge,
@@ -303,6 +329,7 @@ export const TreeProvider = ({ children }: TreeProviderProps) => {
     focusNodeId,
     fitViewRequest,
     addNode,
+    addRelative,
     updateNode,
     removeNode,
     addEdge,

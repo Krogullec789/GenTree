@@ -1,63 +1,114 @@
-import React from 'react';
+import { useEffect, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
 import type { PersonNode } from '../../types/tree';
+import { isValidDate } from '../../utils/treeData';
+
+type FieldName = 'firstName' | 'lastName' | 'maidenName' | 'birthDate' | 'deathDate' | 'gender' | 'bio' | 'avatar';
+type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 interface PersonFormProps {
   node: PersonNode;
   onChange: (updates: Partial<PersonNode>) => void;
 }
 
-const PersonForm = ({ node, onChange }: PersonFormProps) => {
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    onChange({ [name]: value });
+const fieldError = (node: PersonNode, name: FieldName, value: string): string | null => {
+  if (name === 'firstName' && !value.trim()) return 'Podaj imię. Pusta wartość nie zostanie zapisana.';
+  if (name === 'birthDate' || name === 'deathDate') {
+    if (!isValidDate(value)) return 'Podaj poprawną datę.';
+    const birth = name === 'birthDate' ? value : node.birthDate;
+    const death = name === 'deathDate' ? value : node.deathDate;
+    if (birth && death && death < birth) return 'Data śmierci nie może być wcześniejsza niż data urodzenia.';
+  }
+  return null;
+};
+
+// The key supplied by PersonForm resets a draft when undo/redo changes its saved value.
+const DraftField = ({ node, name, label, onChange, type = 'text', placeholder }: PersonFormProps & {
+  name: FieldName;
+  label: string;
+  type?: 'text' | 'date';
+  placeholder?: string;
+}) => {
+  const savedValue = node[name] || '';
+  const [value, setValue] = useState(savedValue);
+  const [nativeInvalid, setNativeInvalid] = useState(false);
+  const error = nativeInvalid ? 'Podaj pełną, poprawną datę.' : fieldError(node, name, value);
+  const dirty = value !== savedValue || nativeInvalid;
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
+  const change = (event: ChangeEvent<FieldElement>) => {
+    setValue(event.target.value);
+    setNativeInvalid(event.target.validity.badInput);
+  };
+  const blur = (event: FocusEvent<FieldElement>) => {
+    const invalid = event.currentTarget.validity.badInput;
+    setNativeInvalid(invalid);
+    if (dirty && !invalid && !error) {
+      const next = ['firstName', 'lastName', 'maidenName'].includes(name) ? value.trim() : value;
+      setValue(next);
+      if (next !== savedValue) onChange({ [name]: next });
+    }
+  };
+  const keyDown = (event: KeyboardEvent<FieldElement>) => {
+    if (event.key === 'Escape') {
+      setValue(savedValue);
+      setNativeInvalid(false);
+      event.preventDefault();
+    } else if (event.key === 'Enter' && name !== 'bio') {
+      event.currentTarget.blur();
+      event.preventDefault();
+    }
+  };
+  const props = {
+    id: name, name, value, onChange: change, onBlur: blur, onKeyDown: keyDown,
+    'aria-invalid': Boolean(error),
+    'aria-describedby': error ? `${name}-error` : dirty ? `${name}-draft` : undefined,
   };
 
   return (
-    <>
-      <div style={{ display: 'flex', gap: '12px' }}>
-        <div className="form-group" style={{ flex: 1 }}>
-          <label htmlFor="firstName">Imię</label>
-          <input id="firstName" type="text" name="firstName" value={node.firstName || ''} onChange={handleChange} required />
-        </div>
-        <div className="form-group" style={{ flex: 1 }}>
-          <label htmlFor="lastName">Nazwisko</label>
-          <input id="lastName" type="text" name="lastName" value={node.lastName || ''} onChange={handleChange} />
-        </div>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="maidenName">Nazwisko rodowe</label>
-        <input id="maidenName" type="text" name="maidenName" value={node.maidenName || ''} onChange={handleChange} placeholder="Opcjonalne" />
-      </div>
-
-      <div style={{ display: 'flex', gap: '12px' }}>
-        <div className="form-group" style={{ flex: 1 }}>
-          <label htmlFor="birthDate">Data ur.</label>
-          <input id="birthDate" type="date" name="birthDate" value={node.birthDate || ''} onChange={handleChange} />
-        </div>
-        <div className="form-group" style={{ flex: 1 }}>
-          <label htmlFor="deathDate">Data śm.</label>
-          <input id="deathDate" type="date" name="deathDate" value={node.deathDate || ''} onChange={handleChange} />
-        </div>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="gender">Płeć</label>
-        <select id="gender" name="gender" value={node.gender || 'male'} onChange={handleChange}>
+    <div className="form-group" style={{ flex: 1, minWidth: 0 }}>
+      <label htmlFor={name}>{label}</label>
+      {name === 'gender' ? (
+        <select {...props}>
           <option value="male">Mężczyzna</option>
           <option value="female">Kobieta</option>
         </select>
-      </div>
+      ) : name === 'bio' ? (
+        <textarea {...props} rows={3} placeholder={placeholder} />
+      ) : (
+        <input {...props} type={type} placeholder={placeholder} required={name === 'firstName'} />
+      )}
+      {error ? <p id={`${name}-error`} className="field-error" role="alert">{error} Zachowano ostatni poprawny zapis.</p>
+        : dirty ? <p id={`${name}-draft`} className="field-hint">Opuść pole, aby zapisać zmianę.</p> : null}
+    </div>
+  );
+};
 
-      <div className="form-group">
-        <label htmlFor="bio">Biografia</label>
-        <textarea id="bio" name="bio" rows={3} value={node.bio || ''} onChange={handleChange} placeholder="Krótki życiorys..." />
+const PersonForm = ({ node, onChange }: PersonFormProps) => {
+  const field = (name: FieldName, label: string, type: 'text' | 'date' = 'text', placeholder?: string) => (
+    <DraftField key={JSON.stringify([node.id, name, node[name]])} node={node} onChange={onChange}
+      name={name} label={label} type={type} placeholder={placeholder} />
+  );
+  return (
+    <>
+      <p className="field-hint">Zmiany zapisują się po opuszczeniu pola. Escape przywraca zapisaną wartość.</p>
+      <div style={{ display: 'flex', gap: '12px' }}>
+        {field('firstName', 'Imię')}
+        {field('lastName', 'Nazwisko')}
       </div>
-
-      <div className="form-group">
-        <label htmlFor="avatar">URL avatara</label>
-        <input id="avatar" type="text" name="avatar" value={node.avatar || ''} onChange={handleChange} placeholder="https://..." />
+      {field('maidenName', 'Nazwisko rodowe', 'text', 'Opcjonalne')}
+      <div style={{ display: 'flex', gap: '12px' }}>
+        {field('birthDate', 'Data ur.', 'date')}
+        {field('deathDate', 'Data śm.', 'date')}
       </div>
+      {field('gender', 'Płeć')}
+      {field('bio', 'Biografia', 'text', 'Krótki życiorys...')}
+      {field('avatar', 'URL avatara', 'text', 'https://...')}
     </>
   );
 };

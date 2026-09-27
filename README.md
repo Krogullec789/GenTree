@@ -42,11 +42,11 @@ On a phone, use **Pokaż całe drzewo**, the zoom buttons and drag the backgroun
 
 ## Architecture and decisions
 
-**Graph model.** People and relationships are stored in maps keyed by ID. Shared validation checks required fields, dates, missing references, duplicate connections and cycles in parent-child relationships. Both the API and the import flow use this validation.
+**Graph model.** People and relationships are stored in maps keyed by ID. Shared validation checks required fields, dates, missing references, duplicate connections and cycles in parent-child relationships. The API, imports, committed edits and demo storage use this validation. Imports reject malformed array entries and duplicate IDs with their location in the file.
 
 **Interactive rendering.** Person cards use HTML so profiles and controls can use standard browser elements. Relationships are drawn in an SVG layer. The canvas calculates which cards fall within the viewport and an overscan area; a separate layout function computes positions without rendering UI.
 
-**State and history.** `TreeProvider` coordinates committed edits, selection and undo/redo with a limit of 50 snapshots. Transient pointer coordinates live in a separate store; only relationship lines subscribe to its updates. The dragged card updates locally and commits its position once on release. Cancelling a gesture leaves the saved position intact. See the [reproducible rendering experiment](docs/performance.md).
+**State and history.** `TreeProvider` coordinates committed edits, selection and undo/redo with a limit of 50 snapshots. Profile fields keep local drafts and commit valid changes on blur (or Enter for single-line fields); Escape discards the draft. Each field edit and each new relative with its relationship is one undo step. Invalid drafts show inline errors and leave the last valid saved value intact. Transient pointer coordinates live in a separate store; only relationship lines subscribe to its updates. The dragged card updates locally and commits its position once on release. Cancelling a gesture leaves the saved position intact. See the [reproducible rendering experiment](docs/performance.md).
 
 **Autosave queue.** At most one request is in flight. Edits made during that request replace the pending snapshot; the next request uses the version returned by the previous one. A conflict pauses writes while preserving local edits, and reloading the server version first offers a JSON backup. Failed requests require an explicit retry. A before-unload prompt warns about pending writes.
 
@@ -134,7 +134,8 @@ npx playwright install chromium
 | `npx playwright show-report` | Open the latest browser test report |
 
 Unit and integration tests cover graph validation, layout rules, API conflicts,
-history, empty-tree persistence and autosave ordering under a slow network. E2E
+atomic relative creation, field validation, grouped history, strict array imports,
+empty-tree persistence and autosave ordering under a slow network. E2E
 tests use a real isolated API and verify edit-save-reload, deletion of the last
 person, layout-drag-history, invalid/valid imports, two-tab conflicts, network
 recovery, demo isolation and a narrow mobile viewport. Screenshot/video capture is
@@ -175,7 +176,7 @@ Next investigations:
 
 - Profile large, realistic family graphs in a production browser build.
 - Improve relationship-line routing for dense families and multiple partnerships.
-- Add field-level validation and group typing into logical history entries.
+- Extend keyboard navigation between people on the canvas.
 - For a multi-user edition, introduce a database, migrations and per-tree access control.
 
 ## License

@@ -18,6 +18,7 @@ test('edits, saves and reloads a person using the real API', async ({ page }) =>
   await page.goto('/');
   await openJan(page);
   await page.getByLabel('Imię', { exact: true }).fill('Adam');
+  await page.getByLabel('Imię', { exact: true }).press('Tab');
   await saved(page);
   await page.reload();
   await page.getByRole('button', { name: 'Otwórz profil: Adam Kowalski' }).click();
@@ -36,6 +37,7 @@ test('deletes the last person permanently and can start a new tree', async ({ pa
   await expect(page.locator('.person-node')).toHaveCount(0);
   await page.getByRole('button', { name: 'Dodaj pierwszą osobę' }).click();
   await page.getByLabel('Imię', { exact: true }).fill('Alicja');
+  await page.getByLabel('Imię', { exact: true }).press('Tab');
   await saved(page);
   await page.reload();
   await expect(page.getByRole('button', { name: 'Otwórz profil: Alicja Osoba' })).toBeVisible();
@@ -98,10 +100,13 @@ test('protects edits in a stale tab and recovers through backup and reload', asy
   await openJan(page);
   await openJan(second);
   await page.getByLabel('Imię', { exact: true }).fill('Adam');
+  await page.getByLabel('Imię', { exact: true }).press('Tab');
   await saved(page);
   await second.getByLabel('Imię', { exact: true }).fill('Anna');
+  await second.getByLabel('Imię', { exact: true }).press('Tab');
   await expect(second.getByRole('status', { name: 'Stan zapisu' })).toContainText('Drzewo zmieniło się w innym oknie');
   await second.getByLabel('Imię', { exact: true }).fill('Aneta');
+  await second.getByLabel('Imię', { exact: true }).press('Tab');
   await expect(second.getByRole('status', { name: 'Stan zapisu' })).toContainText('Drzewo zmieniło się w innym oknie');
   await second.getByRole('button', { name: 'Wczytaj wersję serwera' }).click();
   const download = second.waitForEvent('download');
@@ -117,6 +122,7 @@ test('retries unsaved edits after a network failure', async ({ page }) => {
   await openJan(page);
   await page.route('**/api/tree', route => route.request().method() === 'POST' ? route.abort('failed') : route.continue());
   await page.getByLabel('Imię', { exact: true }).fill('Anna');
+  await page.getByLabel('Imię', { exact: true }).press('Tab');
   await expect(page.getByRole('status', { name: 'Stan zapisu' })).toContainText('Nie udało się zapisać');
   await page.unroute('**/api/tree');
   await page.getByRole('button', { name: 'Spróbuj ponownie' }).click();
@@ -131,6 +137,7 @@ test('demo stays isolated from the API and other tabs, persists on reload and re
   await page.goto('/?demo');
   await openJan(page);
   await page.getByLabel('Imię', { exact: true }).fill('Moje demo');
+  await page.getByLabel('Imię', { exact: true }).press('Tab');
   await saved(page);
   await page.reload();
   await expect(page.getByRole('button', { name: 'Otwórz profil: Moje demo Kowalski' })).toBeVisible();
@@ -165,4 +172,94 @@ test('mobile toolbar fits and touch controls remain usable', async ({ browser })
   await importButton.tap();
   await chooser;
   await context.close();
+});
+
+for (const mode of ['api', 'demo']) {
+  test(`${mode}: invalid drafts preserve saved data and a long field edit is one undo step`, async ({ page }) => {
+    await page.goto(mode === 'demo' ? '/?demo' : '/');
+    await openJan(page);
+    const name = page.getByLabel('Imię', { exact: true });
+    await name.fill('');
+    await name.press('Tab');
+    await expect(name).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByRole('alert')).toContainText('Podaj imię');
+    await page.getByRole('button', { name: 'Zamknij panel' }).click();
+    await page.reload();
+    await openJan(page);
+    await expect(name).toHaveValue('Jan');
+    const birth = page.getByLabel('Data ur.');
+    const death = page.getByLabel('Data śm.');
+    await birth.fill('1980-01-01');
+    await birth.press('Tab');
+    await saved(page);
+    await death.fill('1970-01-01');
+    await death.press('Tab');
+    await expect(death).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByRole('alert')).toContainText('Data śmierci nie może być wcześniejsza');
+    await death.fill('2020-01-01');
+    await death.press('Tab');
+    await saved(page);
+
+    await name.fill('Anna');
+    await name.press('Tab');
+    await saved(page);
+    const bio = page.getByLabel('Biografia');
+    const originalBio = await bio.inputValue();
+    await bio.fill('');
+    const text = 'Długi życiorys zawiera ponad pięćdziesiąt znaków i pozostaje jednym krokiem historii.';
+    await bio.pressSequentially(text);
+    await bio.press('Tab');
+    await saved(page);
+    await page.getByRole('button', { name: 'Cofnij zmianę' }).click();
+    await expect(bio).toHaveValue(originalBio);
+    await expect(name).toHaveValue('Anna');
+    await page.getByRole('button', { name: 'Cofnij zmianę' }).click();
+    await expect(name).toHaveValue('Jan');
+    await page.getByRole('button', { name: 'Ponów zmianę' }).click();
+    await page.getByRole('button', { name: 'Ponów zmianę' }).click();
+    await expect(bio).toHaveValue(text);
+    await saved(page);
+    await page.reload();
+    await page.getByRole('button', { name: 'Otwórz profil: Anna Kowalski', exact: true }).click();
+    await expect(bio).toHaveValue(text);
+  });
+}
+
+test('adding a relative is atomic and a rejected third parent leaves no extra person', async ({ page, request }) => {
+  await page.goto('/');
+  await openJan(page);
+  const addParent = page.getByRole('button', { name: 'Dodaj nową osobę jako parent' });
+  await addParent.click();
+  await expect(page.locator('.person-node')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Cofnij zmianę' }).click();
+  await expect(page.locator('.person-node')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Ponów zmianę' }).click();
+  await expect(page.locator('.person-node')).toHaveCount(2);
+  await addParent.click();
+  await saved(page);
+  const before = await (await request.get(api, { headers })).json();
+  await addParent.click();
+  await expect(page.getByRole('status', { name: 'Stan zapisu' })).toContainText('more than two parents');
+  await expect(page.locator('.person-node')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Cofnij zmianę' }).click();
+  await expect(page.locator('.person-node')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Ponów zmianę' }).click();
+  await saved(page);
+  const after = await (await request.get(api, { headers })).json();
+  expect(after.nodes).toEqual(before.nodes);
+  expect(after.edges).toEqual(before.edges);
+});
+
+test('malformed array imports identify the entry and leave the current tree intact', async ({ page }) => {
+  await page.goto('/');
+  await saved(page);
+  const file = page.getByLabel('Plik drzewa JSON');
+  for (const nodes of [[null], [seed.nodes.jan, seed.nodes.jan]]) {
+    await file.setInputFiles({ name: 'bad-array.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ nodes, edges: [] })) });
+    await expect(page.getByRole('status', { name: 'Stan zapisu' })).toContainText(`nodes[${nodes.length - 1}]`);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.person-node')).toHaveCount(1);
+  }
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Otwórz profil: Jan Kowalski', exact: true })).toBeVisible();
 });

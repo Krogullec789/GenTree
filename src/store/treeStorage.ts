@@ -1,4 +1,4 @@
-import { normalizeTreeDocument } from '../utils/treeData';
+import { normalizeTreeDocument, validateTreeData } from '../utils/treeData';
 import { createDemoTree } from '../utils/demoTree';
 import { VersionConflict, type TreeStorage } from './saveQueue';
 
@@ -25,15 +25,17 @@ export const treeStorage: TreeStorage = {
     return document;
   },
   async save(tree, version) {
+    const validation = validateTreeData(tree);
+    if (!validation.valid) throw new Error(validation.errors[0]);
     if (DEMO_MODE) {
       const nextVersion = crypto.randomUUID();
-      sessionStorage.setItem(DEMO_KEY, JSON.stringify({ ...tree, version: nextVersion }));
+      sessionStorage.setItem(DEMO_KEY, JSON.stringify({ ...validation.data, version: nextVersion }));
       return nextVersion;
     }
     const response = await fetch(`${API_URL}/api/tree`, {
       method: 'POST',
       headers: headers({ 'Content-Type': 'application/json', 'If-Match': version }),
-      body: JSON.stringify(tree),
+      body: JSON.stringify(validation.data),
     });
     if (response.status === 409) throw new VersionConflict();
     const body = await response.json();

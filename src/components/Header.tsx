@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Download, GitBranch, Redo2, Search, Undo2, Upload, X } from 'lucide-react';
 import { useTreeInfo } from '../store/TreeContext';
-import { normalizeTreeData } from '../utils/treeData';
+import { validateTreeData } from '../utils/treeData';
 import ConfirmModal from './ConfirmModal';
 import type { PersonNode, TreeData } from '../types/tree';
 
@@ -73,19 +73,24 @@ const Header = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImportError('');
+    setPendingImport(null);
 
     const reader = new FileReader();
     reader.onload = event => {
       try {
         if (typeof event.target?.result !== 'string') throw new Error('Invalid file content');
-        const normalizedData = normalizeTreeData(JSON.parse(event.target.result));
-        if (!normalizedData) throw new Error('Invalid tree data');
-        setPendingImport(normalizedData);
+        const validation = validateTreeData(JSON.parse(event.target.result));
+        if (!validation.valid) {
+          setImportError(`Nieprawidłowy plik z danymi drzewa: ${validation.errors[0]}`);
+          return;
+        }
+        setPendingImport(validation.data);
       } catch (error) {
         console.error('Błąd importu:', error);
         setImportError('Nieprawidłowy plik z danymi drzewa.');
+      } finally {
+        e.target.value = '';
       }
-      e.target.value = '';
     };
     reader.readAsText(file);
   };

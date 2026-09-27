@@ -2,6 +2,7 @@ import type React from 'react';
 
 export type Gender = 'male' | 'female';
 export type RelationshipType = 'parent-child' | 'partner';
+export type RelationKind = 'parent' | 'child' | 'partner';
 
 export interface PersonNode {
   id: string;
@@ -58,7 +59,8 @@ export interface TreeContextValue extends TreeData {
   setSelectedNodeId: React.Dispatch<React.SetStateAction<string | null>>;
   setIsPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setFocusNodeId: React.Dispatch<React.SetStateAction<string | null>>;
-  addNode: (nodeData: NewPersonNode) => string;
+  addNode: (nodeData: NewPersonNode) => string | null;
+  addRelative: (personId: string, kind: RelationKind, nodeData: NewPersonNode) => string | null;
   updateNode: (id: string, updates: Partial<PersonNode>) => void;
   removeNode: (id: string) => void;
   addEdge: (sourceId: string, targetId: string, type: RelationshipType) => boolean;

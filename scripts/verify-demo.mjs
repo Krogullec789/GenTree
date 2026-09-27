@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium, expect } from '@playwright/test';
 
@@ -33,12 +33,26 @@ try {
   await expect(page.locator('.app-logo')).toBeVisible();
   expect(await page.locator('.app-logo').evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
   await page.getByRole('button', { name: 'Otwórz profil: Jan Kowalski', exact: true }).click();
-  await page.getByLabel('Imię', { exact: true }).fill('Demo produkcyjne');
+  const name = page.getByLabel('Imię', { exact: true });
+  await name.fill('');
+  await name.press('Tab');
+  await expect(name).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByRole('alert')).toContainText('Podaj imię');
+  await mkdir('output/playwright', { recursive: true });
+  await page.screenshot({ path: 'output/playwright/profile-validation-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: 'output/playwright/profile-validation-mobile.png' });
+  await page.getByRole('button', { name: 'Zamknij panel' }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Otwórz profil: Jan Kowalski', exact: true }).click();
+  await expect(name).toHaveValue('Jan');
+  await name.fill('Demo produkcyjne');
+  await page.getByLabel('Imię', { exact: true }).press('Tab');
   await expect(page.getByRole('status', { name: 'Stan zapisu' })).toHaveText('Zapisano');
   await page.reload();
   await expect(page.getByRole('button', { name: 'Otwórz profil: Demo produkcyjne Kowalski' })).toBeVisible();
   expect(failures).toEqual([]);
-  console.log('Production demo verified under /GenTree/: assets, isolated storage, edit/save/reload, no API requests.');
+  console.log('Production demo verified under /GenTree/: assets, isolated storage, invalid draft protection, edit/save/reload, no API requests.');
 } finally {
   await browser?.close();
   await new Promise(resolve => server.close(resolve));

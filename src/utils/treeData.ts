@@ -7,14 +7,21 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-const collectionToRecord = <T extends { id: string }>(collection: unknown): Record<string, T> | null => {
+const collectionToRecord = <T extends { id: string }>(collection: unknown, label: string, errors: string[]): Record<string, T> | null => {
   if (Array.isArray(collection)) {
-    return collection.reduce<Record<string, T>>((record, item) => {
-      if (isRecord(item) && typeof item.id === 'string') {
-        record[item.id] = item as T;
+    const entries: [string, T][] = [];
+    const ids = new Set<string>();
+    for (const [index, item] of collection.entries()) {
+      if (!isRecord(item) || typeof item.id !== 'string' || !item.id.trim()) {
+        errors.push(`${label}[${index}]: element musi być obiektem z niepustym identyfikatorem id.`);
+      } else if (ids.has(item.id)) {
+        errors.push(`${label}[${index}]: powtarzający się identyfikator "${item.id}".`);
+      } else {
+        ids.add(item.id);
+        entries.push([item.id, item as T]);
       }
-      return record;
-    }, {});
+    }
+    return Object.fromEntries(entries);
   }
 
   return isRecord(collection) ? collection as Record<string, T> : null;
@@ -22,7 +29,7 @@ const collectionToRecord = <T extends { id: string }>(collection: unknown): Reco
 
 const asString = (value: unknown) => typeof value === 'string' ? value : '';
 
-const isValidDate = (value: unknown): value is string => {
+export const isValidDate = (value: unknown): value is string => {
   if (value === undefined || value === '') return true;
   if (typeof value !== 'string' || !DATE_RE.test(value)) return false;
 
@@ -199,8 +206,10 @@ export const validateTreeData = (data: unknown): TreeValidationResult => {
 
   const dataRecord = isRecord(data.data) ? data.data : data;
 
-  const rawNodes = collectionToRecord<PersonNode>(dataRecord.nodes);
-  const rawEdges = collectionToRecord<TreeEdge>(dataRecord.edges);
+  const rawNodes = collectionToRecord<PersonNode>(dataRecord.nodes, 'nodes', errors);
+  const rawEdges = collectionToRecord<TreeEdge>(dataRecord.edges, 'edges', errors);
+
+  if (errors.length) return { valid: false, data: null, errors };
 
   if (!rawNodes || !rawEdges) {
     return { valid: false, data: null, errors: ['Tree data must include nodes and edges.'] };

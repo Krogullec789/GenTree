@@ -506,3 +506,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .app-actions .sync-status { width: auto; flex: 1 1 130px; }
   .app-actions .history-actions { flex: 0 0 auto; }
 }
+
+.field-error, .field-hint {
+  margin: 6px 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.field-error { color: #fca5a5; }
+.field-hint { color: var(--text-secondary); }
+.form-group [aria-invalid="true"] { border-color: #f87171; }
